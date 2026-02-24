@@ -1,0 +1,47 @@
+Brwolf's Meaningful Language License (BMLL)
+Version 2.0 — February 2026
+Copyright (c) 2026 Brwolf
+
+DEFINITIONS
+
+"The Author": Brwolf
+"The Software": This software and associated documentation files, either the Executable or the Source Code(Lexer, Parser, Interpreter)
+"Libraries": External code modules that extend the Software's capabilities
+"User Scripts": Any original code written in the Meaningful Language (e.g., .mean files) intended to be executed by the Software. Are not considered Derivative Works of the Software solely by virtue of being executed by it.
+"Commercial Activity": means any activity intended for or directed toward commercial advantage or monetary compensation.
+"Derivative Work": has the meaning defined under applicable copyright law.
+"Core components": Components like the Lexer, the Parser, the Interpreter and the Executable.
+
+LICENSE
+1. GRANT OF COPYRIGHT LICENSE
+Permission is hereby granted, free of charge, to any person obtaining a copy of The Software, to use, copy, modify, and redistribute the Software subject to the following mandatory conditions:
+
+2. GRANT OF PATENT LICENCE
+The Author grants a perpetual, worldwide, royalty-free patent license to use, modify, and distribute the Software. This license terminates for any party initiating patent litigation regarding the Software.
+
+3. RESTRICTIONS & CONDITIONS
+
+- A. Attribution: All redistributions of the Software, in source or binary form, must retain the above copyright notice, this list of conditions, and the following disclaimer. You must clearly credit Brwolf as the original author.
+
+- B. Public Disclosure: If you redistribute a modified version of the Software, you must make the modified source code publicly available by making the complete corresponding source code available in a publicly accessible repository or website at no cost, in a format suitable for modification.
+
+- C. Non-Endorsement: The name of the Author or the name of the Software may not be used to endorse or promote products derived from this Software without specific prior written permission. This License does not grant rights to use the names “Meaningful Language” or “Brwolf” except for accurate attribution. These remain exclusively for the use of the author.
+
+- D. Network Use Disclosure: If you modify the Software and make its functionality available to users over a network (including as part of a web service, API, or remote execution environment), you must provide those users with access to the complete corresponding source code of the modified version.
+
+- E. Trademark: This License does not grant any rights to use the Author’s trademarks, service marks, or trade names except for attribution purposes.
+
+4. LIBRARIES
+ Libraries developed to extend the Software are considered derivative works if they depend on or interface directly with the Software’s core components. Such Libraries must be licensed under the terms of this License when distributed together with the Software.
+
+5.LICENCE PROPAGATION
+Any Derivative Work of the Software, including modifications to the Lexer, Parser, Interpreter, or core components, must be licensed under this License when distributed.
+
+6. DISCLAIMER OF WARRANTY
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE.
+
+7. OWNERSHIP OF OUTPUT:
+The Author claims no ownership over User Scripts. Users are free to license, sell, or distribute their own original scripts commercially. However, this does not grant any rights to sell the Software (the engine) itself, even if bundled with a commercial User Script.
+
+8. TERMINATION:
+Any violation of this License automatically terminates the rights granted herein. A party whose rights have been terminated may have them reinstated if the violation is cured within 30 days of becoming aware of it.

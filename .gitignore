@@ -1,0 +1,14 @@
+# Compiled Object files
+*.o
+*.a
+
+# Executables
+*.exe
+*.out
+meaningful    
+
+# Language-specific junk
+*.mean       
+
+# IDE/Editor junk
+.vscode/    
