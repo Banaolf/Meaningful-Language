@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-
+//Licenced under BMLL2.0, see LICENSE for further info
 int currentIndex = 0;
 int scopeLevel = 0;
 TokenStream* globalStream;

@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "lexer.h"
 #include "syntax.h"
-
+//Licensed under BMLL2.0, see LICENCE for further info
 // --- THE TOOLS ---
 
 bool get_keyword_type(char* str) {

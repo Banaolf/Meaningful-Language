@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+//Licenced under BMLL2.0, see LICENCE for further info
 // --- Runtime Garbage Collector ---
 
 typedef struct GCNode {
@@ -357,13 +357,56 @@ char* readFile(const char* path) {
     return buffer;
 }
 
+void runREPL() {
+    char line[1024];
+    printf("Meaningful Shell ALPHA.0.88\n");
+    printf("Type 'exit' to quit.\n");
+
+    while (1) {
+        printf("mean> ");
+        if (!fgets(line, sizeof(line), stdin)) break;
+
+        // Remove the newline character
+        line[strcspn(line, "\n")] = 0;
+
+        if (strcmp(line, "exit") == 0) break;
+        if (strlen(line) == 0) continue;
+
+        // 1. Lex
+        TokenStream* stream = lex(line);
+        // 2. Parse
+        ASTNode* root = parseFile(*stream);
+
+        if (root) {
+            // 3. Evaluate
+            Value result = evaluate(root);
+            
+            // Optional: Print the result of the expression automatically
+            if (result.type == VAL_INT) printf("=> %d\n", result.as.number);
+            else if (result.type == VAL_STRING) printf("=> %s\n", result.as.string);
+
+            freeAST(root);
+        }
+
+        // 4. Cleanup for this turn
+        finalCleanup(stream);
+        gc_free_all(); 
+    }
+}
+
 int main(int argc, char *argv[]){
-    if (argc != 2) {
+    if (argc != 2 && argc != 1) {
         printf("Usage: meaningful [script.mean]\n");
         return 64;
+    } else if (argc == 1){
+        runREPL();
+        return 0;
     }
-    if (argv[1] == "-v"){
+    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0){
         printf("Meaningful Language, Licenced under BMLL 2.0\n                      Version ALPHA.0.88");
+    }
+    if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0){
+        system("start https://github.com/Banaolf/Meaningful-Language");
     }
 
     char* src = readFile(argv[1]);

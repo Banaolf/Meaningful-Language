@@ -1,6 +1,6 @@
 # Configuración del compilador
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -static -O3 -Wall -Wextra
 AR = ar
 ARFLAGS = rcs
 
