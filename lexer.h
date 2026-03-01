@@ -14,12 +14,17 @@ typedef enum {
     TOKEN_PARENTHESIS,// Parenthesis ()
     TOKEN_COMMA,      // Comma ,
     TOKEN_SEMICOLON,  // Semicolon ;
-    TOKEN_EOL
+    TOKEN_NON, //non
+    TOKEN_BOOLEAN, //true | false
+    TOKEN_SQUARE, //[]
+    TOKEN_CURLY, //{}
+    TOKEN_COLON, // :
+    TOKEN_COMPOUND_ASSIGN // +=, -=, *=, /=
 } TokenType;
 
 typedef struct {
     TokenType type;
-    char* value; // Dynamic string for the actual text
+    char* value; 
     int ln;
     int character;
 } Token;

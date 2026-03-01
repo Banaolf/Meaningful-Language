@@ -8,7 +8,6 @@ DEFINITIONS
 "The Software": This software and associated documentation files, either the Executable or the Source Code(Lexer, Parser, Interpreter)
 "Libraries": External code modules that extend the Software's capabilities
 "User Scripts": Any original code written in the Meaningful Language (e.g., .mean files) intended to be executed by the Software. Are not considered Derivative Works of the Software solely by virtue of being executed by it.
-"Commercial Activity": means any activity intended for or directed toward commercial advantage or monetary compensation.
 "Derivative Work": has the meaning defined under applicable copyright law.
 "Core components": Components like the Lexer, the Parser, the Interpreter and the Executable.
 
@@ -32,13 +31,13 @@ The Author grants a perpetual, worldwide, royalty-free patent license to use, mo
 - E. Trademark: This License does not grant any rights to use the Author’s trademarks, service marks, or trade names except for attribution purposes.
 
 4. LIBRARIES
- Libraries developed to extend the Software are considered derivative works if they depend on or interface directly with the Software’s core components. Such Libraries must be licensed under the terms of this License when distributed together with the Software.
+Libraries developed to extend the Software are considered derivative works if they depend on or interface directly with the Software’s core components. Such Libraries must be licensed under the terms of this License when distributed together with the Software.
 
 5.LICENCE PROPAGATION
 Any Derivative Work of the Software, including modifications to the Lexer, Parser, Interpreter, or core components, must be licensed under this License when distributed.
 
 6. DISCLAIMER OF WARRANTY
-IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE.
+THE SOFWSARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE.
 
 7. OWNERSHIP OF OUTPUT:
 The Author claims no ownership over User Scripts. Users are free to license, sell, or distribute their own original scripts commercially. However, this does not grant any rights to sell the Software (the engine) itself, even if bundled with a commercial User Script.

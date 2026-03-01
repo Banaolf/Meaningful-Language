@@ -4,11 +4,13 @@
 
 # Executables
 *.exe
-*.out
-meaningful    
+*.out  
 
 # Language-specific junk
-*.mean       
+*.mean
 
 # IDE/Editor junk
 .vscode/    
+.clangd
+.clang-format
+\.installer
