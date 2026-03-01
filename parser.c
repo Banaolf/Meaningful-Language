@@ -219,6 +219,18 @@ ASTNode* parsePrimaryExpression() {
         Token t = peek(0);
         printf("SyntaxException: Invalid token %s, Line %d Character %d", t.value, t.ln, t.character);
     }
+
+    // Unary not
+    if (is(TOKEN_OPERATOR, 0) && strcmp(peek(0).value, "!") == 0) {
+        advance();
+        ASTNode* operand = parsePrimaryExpression();
+        if (!operand) return NULL;
+        ASTNode* zero = createNode(NODE_NUMBER, "0");
+        ASTNode* node = createNode(NODE_BINARY_OP, "==");
+        node->left = operand;
+        node->right = zero;
+        return node;
+    }
     if (is(TOKEN_NUMBER, 0)) {
         Token t = peek(0);
         advance();
@@ -339,7 +351,6 @@ ASTNode* parsePrimaryExpression() {
 
 ASTNode* parsePower() {
     ASTNode* left = parsePostfixExpression();
-
     if (is(TOKEN_OPERATOR, 0) && strcmp(peek(0).value, "**") == 0) {
         Token op = peek(0);
         advance();
@@ -353,10 +364,10 @@ ASTNode* parsePower() {
 }
 
 ASTNode* parseTerm() {
-    ASTNode* left = parsePostfixExpression();
+    ASTNode* left = parsePower();
 
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0) || strcmp(peek(0).value, "//") == 0){
-        if (parserError) break; // I still have a ** left.
+    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0 || strcmp(peek(0).value, "//") == 0)){
+        if (parserError) break; 
         Token op = peek(0);
         advance();
         ASTNode* right = parsePower();
@@ -371,7 +382,6 @@ ASTNode* parseTerm() {
 
 ASTNode* parseAddSub() {
     ASTNode* left = parseTerm();
-
     while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "+") == 0 || strcmp(peek(0).value, "-") == 0)) {
         if (parserError) break;
         Token op = peek(0);

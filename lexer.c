@@ -87,10 +87,10 @@ TokenStream* lex(char* source) {
             }
         }
 
-        if (isalnum(*c) || *c == '_' || *c == '-') {
+        if (isalnum(*c) || *c == '_' ) {
             char buffer[256] = {0};
             int i = 0;
-            while (isalnum(*c) || *c == '_' || *c == '-') buffer[i++] = *c++;
+            while (isalnum(*c) || *c == '_' ) buffer[i++] = *c++;
 
             if (get_keyword_type(buffer)) {
                 addToken(stream, TOKEN_KEYWORD, buffer, line, character);
