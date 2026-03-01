@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.45.2"
+#define VERSION "ALPHA.0.99.46.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
