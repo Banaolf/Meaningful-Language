@@ -12,3 +12,6 @@ meaningful
 
 # IDE/Editor junk
 .vscode/    
+.installer/
+.clangd
+.clangd-format
