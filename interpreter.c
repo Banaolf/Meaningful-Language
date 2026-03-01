@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.45.2"
+#define VERSION "ALPHA.0.99.46.3"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -54,7 +54,7 @@ struct Value {
     } as;
 };
 
-// Helper macros for the new Value/Object system
+// Helper macros for the Value/Object system
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
 #define AS_OBJECT(value)    ((value).as.obj)
 #define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
@@ -96,12 +96,31 @@ typedef struct ValueDict {
 #define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
 
 // Value constructors
-Value makeInt(int n) { Value v; v.type = VAL_INT; v.as.number = n; return v; }
-Value makeObj(Object* obj) { Value v; v.type = VAL_OBJECT; v.as.obj = obj; return v; }
-Value makeVoid() { Value v; v.type = VAL_VOID; return v; }
-Value makeFloat(float n) { Value v; v.type = VAL_FLOAT; return v;}
-Value makeReturn(Value val) { Value v; v.type = VAL_RETURN; v.as.obj = val.as.obj;v.as.number = val.as.number; return v; }
-Value makeBreak() { Value v; v.type = VAL_BREAK; return v; }
+Value make(ValueType type, ...) {
+    va_list args;
+    va_start(args, type);
+    Value result;
+    result.type = type;
+    if (type == VAL_INT){ // takes one argument, the int
+        int argument = va_arg(args, int);
+        result.as.number = argument;
+    } else if (type == VAL_OBJECT) {
+        Object* argument = va_arg(args, Object*);
+        result.as.obj = argument;
+    } else if (type == VAL_FLOAT) {
+        double argument = va_arg(args, double);
+        result.as.decimal = argument;
+    } else if (type == VAL_RETURN) {
+        Value argument = va_arg(args, Value);
+        result.as.obj = argument.as.obj;
+        result.as.number = argument.as.number;
+        result.as.decimal = argument.as.decimal;
+        result.as.exc = argument.as.exc;
+    } 
+    va_end(args);
+    return result;
+}
+
 Exception makeException(ExceptionType type, char* message) {Exception exc;exc.type = type;exc.message = message;return exc;}
 Value throwException(ExceptionType type, const char* fmt, ...) {
     char* buffer = malloc(1024);
@@ -439,14 +458,14 @@ char* readFile(const char* path);
 // --- Evaluator ---
 
 Value evaluate(ASTNode* node) {
-    if (node == NULL) return makeVoid();
+    if (node == NULL) return make(VAL_VOID);
 
     // 1. Literals
     if (node->type == NODE_NUMBER) {
-        return makeInt(atoi(node->value));
+        return make(VAL_INT, atoi(node->value));
     }
     if (node->type == NODE_STRING) {
-        return makeObj((Object*)allocateString(node->value, strlen(node->value)));
+        return make(VAL_OBJECT, (Object*)allocateString(node->value, strlen(node->value)));
     }
     
     // 2. Variables
@@ -463,7 +482,7 @@ Value evaluate(ASTNode* node) {
 
         if (strcmp(node->value, "+") == 0) {
             if (left.type == VAL_INT && right.type == VAL_INT) {
-                return makeInt(left.as.number + right.as.number);
+                return make(VAL_INT, left.as.number + right.as.number);
             }
             if (IS_STRING(left) && IS_STRING(right)) {
                 size_t len1 = AS_STRING(left)->length;
@@ -473,7 +492,7 @@ Value evaluate(ASTNode* node) {
                 memcpy(result_chars + len1, AS_CSTRING(right), len2 + 1);
                 ObjString* result_obj = allocateString(result_chars, len1 + len2);
                 free(result_chars);
-                return makeObj((Object*)result_obj);
+                return make(VAL_OBJECT, (Object*)result_obj);
             }
         }
         
@@ -486,30 +505,30 @@ Value evaluate(ASTNode* node) {
             if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return makeFloat(l - r);
+                return make(VAL_FLOAT, l - r);
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
-                return makeInt(left.as.number - right.as.number);
+                return make(VAL_INT, left.as.number - right.as.number);
             }
         }
         if (strcmp(node->value, "+") == 0) { // +
             if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return makeFloat(l + r);
+                return make(VAL_FLOAT, l + r);
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
-                return makeInt(left.as.number + right.as.number);
+                return make(VAL_INT, left.as.number + right.as.number);
             }
         }
         if (strcmp(node->value, "*") == 0) { // *
             if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return makeFloat(l * r);
+                return make(VAL_VOID, l * r);
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
-                return makeInt(left.as.number - right.as.number);
+                return make(VAL_INT, left.as.number - right.as.number);
             }
         }
         if (strcmp(node->value, "/") == 0) {
@@ -517,11 +536,11 @@ Value evaluate(ASTNode* node) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
-                return makeFloat(l / r);
+                return make(VAL_VOID, l / r);
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
                 if(right.as.number == 0) throwException(DivideByZeroException, "DivideByZeroException: Division by zero. \n");
-                return makeInt(left.as.number / right.as.number);
+                return make(VAL_INT, left.as.number / right.as.number);
             }
         }
         if (strcmp(node->value, "//") == 0) {
@@ -529,38 +548,38 @@ Value evaluate(ASTNode* node) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
-                return makeInt((int)floor(l / r));
+                return make(VAL_INT, (int)floor(l / r));
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
                 if (right.as.number == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
-                return makeInt((int)floor((float)left.as.number / (float)right.as.number));
+                return make(VAL_INT, (int)floor((float)left.as.number / (float)right.as.number));
             }
         }
         if (strcmp(node->value, "**")==0) {
             if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
                 float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
                 float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return makeFloat(pow(l, r));
+                return make(VAL_VOID, pow(l, r));
             }
             if (left.type == VAL_INT && right.type == VAL_INT) {
-                return makeInt(pow(left.as.number, right.as.number));
+                return make(VAL_INT, pow(left.as.number, right.as.number));
             }
         }
 
         // Logic & Comparison
-        if (strcmp(node->value, "and") == 0) return makeInt(left.as.number && right.as.number);
-        if (strcmp(node->value, "or") == 0) return makeInt(left.as.number || right.as.number);
+        if (strcmp(node->value, "and") == 0) return make(VAL_INT, left.as.number && right.as.number);
+        if (strcmp(node->value, "or") == 0) return make(VAL_INT, left.as.number || right.as.number);
         
         if (strcmp(node->value, "==") == 0) {
-            if (IS_STRING(left) && IS_STRING(right)) return makeInt(strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
-            return makeInt(left.as.number == right.as.number);
+            if (IS_STRING(left) && IS_STRING(right)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
+            return make(VAL_INT, left.as.number == right.as.number);
         }
-        if (strcmp(node->value, "!=") == 0) return makeInt(left.as.number != right.as.number);
+        if (strcmp(node->value, "!=") == 0) return make(VAL_INT, left.as.number != right.as.number);
         
-        if (strcmp(node->value, "<") == 0) return makeInt(left.as.number < right.as.number);
-        if (strcmp(node->value, ">") == 0) return makeInt(left.as.number > right.as.number);
-        if (strcmp(node->value, "<=") == 0) return makeInt(left.as.number <= right.as.number);
-        if (strcmp(node->value, ">=") == 0) return makeInt(left.as.number >= right.as.number);
+        if (strcmp(node->value, "<") == 0) return make(VAL_INT, left.as.number < right.as.number);
+        if (strcmp(node->value, ">") == 0) return make(VAL_INT, left.as.number > right.as.number);
+        if (strcmp(node->value, "<=") == 0) return make(VAL_INT, left.as.number <= right.as.number);
+        if (strcmp(node->value, ">=") == 0) return make(VAL_INT, left.as.number >= right.as.number);
     }
 
     // 4. Assignments
@@ -619,7 +638,7 @@ Value evaluate(ASTNode* node) {
     // 5. Function Definitions
     if (node->type == NODE_FUNCTION_DEF) {
         defineFunction(node->value, node);
-        return makeVoid();
+        return make(VAL_VOID);
     }
 
     // 6. Function Calls
@@ -629,7 +648,7 @@ Value evaluate(ASTNode* node) {
             return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Function '%s' not defined.\n", node->value);
         }
 
-        Value result = makeVoid();
+        Value result = make(VAL_VOID);
         int argCount = node->childCount;
 
         // A. Evaluate Arguments
@@ -664,7 +683,7 @@ Value evaluate(ASTNode* node) {
                 for(int i=0; i<body->childCount; i++) {
                     ASTNode* stmt = body->children[i];
                     if (stmt->type == NODE_RETURN) {
-                        result = makeReturn(evaluate(stmt->right));
+                        result = make(VAL_RETURN, evaluate(stmt->right));
                         goto end_call_user; // Return immediately
                     }
                     Value stmtVal = evaluate(stmt);
@@ -693,7 +712,7 @@ Value evaluate(ASTNode* node) {
                 return list->items[i];
             }
         }
-        return makeObj((Object*)list);
+        return make(VAL_OBJECT, (Object*)list);
     }
 
     // Dictionary
@@ -720,7 +739,7 @@ Value evaluate(ASTNode* node) {
                 HASH_ADD_STR(dict->head, key, entry);
             }
         }
-        return makeObj((Object*)dict);
+        return make(VAL_OBJECT, (Object*)dict);
     }
 
     // Index Access
@@ -756,7 +775,7 @@ Value evaluate(ASTNode* node) {
         Value val = evaluate(node->right);
         if (val.type == VAL_ERR) return val;
         printValue(val);
-        return makeVoid();
+        return make(VAL_VOID);
     }
 
     // 9. If Statements
@@ -772,7 +791,7 @@ Value evaluate(ASTNode* node) {
             Value res = evaluate(node->children[1]); // Execute body once
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         }
-        return makeVoid();
+        return make(VAL_VOID);
     }
 
     // 10. While Loops
@@ -791,7 +810,7 @@ Value evaluate(ASTNode* node) {
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
         }
-        return makeVoid();
+        return make(VAL_VOID);
     }
 
     // 11. Import
@@ -811,17 +830,17 @@ Value evaluate(ASTNode* node) {
         }
         finalCleanup(Stream);
         free(source);
-        return makeVoid();
+        return make(VAL_VOID);
     }
 
     // 12. Break
     if (node->type == NODE_BREAK) {
-        return makeBreak();
+        return make(VAL_BREAK);
     }
 
     // 7. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
-        Value lastResult = makeVoid();
+        Value lastResult = make(VAL_VOID);
         if (node->children) {
             for(int i=0; i<node->childCount; i++) {
                 lastResult = evaluate(node->children[i]);
@@ -833,7 +852,7 @@ Value evaluate(ASTNode* node) {
         return lastResult;
     }
 
-    return makeVoid();
+    return make(VAL_VOID);
 }
 
 // --- Native C Functions ---
@@ -848,9 +867,9 @@ Value native_input(int argCount, Value* args) {
     if (fgets(line, sizeof(line), stdin)) {
         // Remove trailing newline
         line[strcspn(line, "\n")] = 0;
-        return makeObj((Object*)allocateString(line, strlen(line)));
+        return make(VAL_OBJECT, (Object*)allocateString(line, strlen(line)));
     }
-    return makeObj((Object*)allocateString("", 0)); // Return empty string on EOF or error
+    return make(VAL_OBJECT, (Object*)allocateString("", 0)); // Return empty string on EOF or error
 }
 
 Value native_clock(int argCount, Value* args) {
@@ -859,7 +878,7 @@ Value native_clock(int argCount, Value* args) {
         return throwException(ArgumentException, "ArgumentException: clock() takes 0 arguments.\n");
     }
     // Return milliseconds
-    return makeInt((int)(clock() * 1000 / CLOCKS_PER_SEC));
+    return make(VAL_INT, (int)(clock() * 1000 / CLOCKS_PER_SEC));
 }
 
 // --- Initialization ---
