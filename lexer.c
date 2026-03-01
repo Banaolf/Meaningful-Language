@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -108,8 +109,22 @@ TokenStream* lex(char* source) {
         if (isdigit(*c)) {
             char buffer[256] = {0};
             int i = 0;
-            while (isdigit(*c)) buffer[i++] = *c++;
-            addToken(stream, TOKEN_NUMBER, buffer, line, character);
+            int pointCount = 0;
+            while (isdigit(*c) || *c == '.') {
+                buffer[i++] = *c++;
+                if (*c == '.'){
+                    pointCount++;
+                }
+            }
+            if (pointCount > 1){
+                printf("[LEXER]SyntaxException: Floats cannot have more than 1 . Line: %d, Char: %d\n", line, character);
+                addToken(stream, ERR, "FLOAT", line, character);
+            }
+            if (strchr(buffer, '.') != NULL){
+                addToken(stream, TOKEN_FLOAT, buffer, line, character); 
+            } else{
+                addToken(stream, TOKEN_NUMBER, buffer, line, character);
+            }
             continue;
         }
         
@@ -168,6 +183,14 @@ TokenStream* lex(char* source) {
             if (*(c+1) == '=') {
                 char buffer[3] = {*c, '=', '\0'};
                 addToken(stream, TOKEN_COMPOUND_ASSIGN, buffer, line, character);
+                c += 2;
+                continue;
+            } else if (*c == '*' && *(c+1) == '*'){ // Native pow()!
+                addToken(stream, TOKEN_OPERATOR, "**", line, character);
+                c += 2;
+                continue;
+            } else if (*c == '/' && *(c+1) == '/'){
+                addToken(stream, TOKEN_OPERATOR, "//", line, character);
                 c += 2;
                 continue;
             }

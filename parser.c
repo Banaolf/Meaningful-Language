@@ -31,6 +31,7 @@ char* tokenTypeToString(TokenType type){
         case TOKEN_SEMICOLON: return "TOKEN_SEMICOLON";
         case TOKEN_COLON: return "TOKEN_COLON";
         case TOKEN_COMPOUND_ASSIGN: return "TOKEN_COMPOUND_ASSIGN";
+        case TOKEN_FLOAT: return "TOKEN_FLOAT";
         default: return "UNKNOWN";
     }
 }
@@ -214,10 +215,20 @@ ASTNode* parsePostfixExpression() {
 }
 
 ASTNode* parsePrimaryExpression() {
+    if (is(ERR,0)){
+        Token t = peek(0);
+        printf("SyntaxException: Invalid token %s, Line %d Character %d", t.value, t.ln, t.character);
+    }
     if (is(TOKEN_NUMBER, 0)) {
         Token t = peek(0);
         advance();
         return createNode(NODE_NUMBER, t.value);
+    }
+
+    if (is(TOKEN_FLOAT, 0)) {
+        Token t = peek(0);
+        advance();
+        return createNode(NODE_FLOAT, t.value);
     }
 
     if (is(TOKEN_BOOLEAN, 0)) { //So, internally treated as ints.
@@ -326,14 +337,29 @@ ASTNode* parsePrimaryExpression() {
     return NULL;
 }
 
+ASTNode* parsePower() {
+    ASTNode* left = parsePostfixExpression();
+
+    if (is(TOKEN_OPERATOR, 0) && strcmp(peek(0).value, "**") == 0) {
+        Token op = peek(0);
+        advance();
+        ASTNode* right = parsePower(); // recurse for right-associativity
+        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        node->left = left;
+        node->right = right;
+        return node;
+    }
+    return left;
+}
+
 ASTNode* parseTerm() {
     ASTNode* left = parsePostfixExpression();
 
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0)) {
-        if (parserError) break;
+    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0) || strcmp(peek(0).value, "//") == 0){
+        if (parserError) break; // I still have a ** left.
         Token op = peek(0);
         advance();
-        ASTNode* right = parsePostfixExpression();
+        ASTNode* right = parsePower();
         
         ASTNode* node = createNode(NODE_BINARY_OP, op.value);
         node->left = left;
@@ -592,7 +618,7 @@ ASTNode* parseStatement() {
 
     if (is(TOKEN_EQUALS, 0) || is(TOKEN_COMPOUND_ASSIGN, 0)) { // It's an assignment
         if (expr->type != NODE_VARIABLE && expr->type != NODE_INDEX_ACCESS) {
-            printf("SyntaxException: Invalid target for assignment.\n");
+            printf("[PARSER]SyntaxException: Invalid target for assignment.\n"); //Since this expected nodes, we allow this not to be throw().
             parserError = 1;
             freeAST(expr);
             return NULL;
@@ -605,7 +631,6 @@ ASTNode* parseStatement() {
         if (!rvalue) { freeAST(expr); return NULL; }
 
         if (opToken.type == TOKEN_COMPOUND_ASSIGN) {
-            // Desugar: LHS = LHS op RHS
             char opChar[2] = { opToken.value[0], '\0' };
             ASTNode* binaryOp = createNode(NODE_BINARY_OP, opChar);
             binaryOp->left = copyAST(expr);
@@ -619,7 +644,7 @@ ASTNode* parseStatement() {
         return assignmentNode;
     }
 
-    // It was not an assignment, just a standalone expression (like a function call)
+    // It was not an assignment, just a standalone expression 
     return expr;
 }
 

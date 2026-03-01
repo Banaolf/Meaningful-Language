@@ -19,6 +19,7 @@ typedef enum {
     NODE_BREAK,
     NODE_STRING,
     NODE_WHILE,
+    NODE_FLOAT,
     NODE_LIST_LITERAL,
     NODE_DICT_LITERAL,
     NODE_INDEX_ACCESS
@@ -26,9 +27,9 @@ typedef enum {
 
 typedef struct ASTNode {
     NodeType type;
-    char* value;                // The name or number (as a string)
-    struct ASTNode* left;       // Left child
-    struct ASTNode* right;      // Right child
+    char* value;
+    struct ASTNode* left;
+    struct ASTNode* right;
     struct ASTNode** children; 
     int childCount;
     int childCapacity;

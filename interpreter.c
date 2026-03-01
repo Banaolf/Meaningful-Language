@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 
+#include <math.h>
 #include <stdlib.h> 
 #include <stdbool.h>
 #include <time.h>
@@ -23,7 +24,8 @@ typedef enum {
     VAL_INT,
     VAL_VOID,
     VAL_ERR,
-    VAL_OBJECT,// Represents all heap-allocated types
+    VAL_OBJECT,
+    VAL_FLOAT,
     VAL_RETURN,
     VAL_BREAK
 } ValueType;
@@ -48,6 +50,7 @@ struct Value {
         int number;
         Object* obj;
         Exception exc;
+        float decimal;
     } as;
 };
 
@@ -96,6 +99,7 @@ typedef struct ValueDict {
 Value makeInt(int n) { Value v; v.type = VAL_INT; v.as.number = n; return v; }
 Value makeObj(Object* obj) { Value v; v.type = VAL_OBJECT; v.as.obj = obj; return v; }
 Value makeVoid() { Value v; v.type = VAL_VOID; return v; }
+Value makeFloat(float n) { Value v; v.type = VAL_FLOAT; return v;}
 Value makeReturn(Value val) { Value v; v.type = VAL_RETURN; v.as.obj = val.as.obj;v.as.number = val.as.number; return v; }
 Value makeBreak() { Value v; v.type = VAL_BREAK; return v; }
 Exception makeException(ExceptionType type, char* message) {Exception exc;exc.type = type;exc.message = message;return exc;}
@@ -478,11 +482,69 @@ Value evaluate(ASTNode* node) {
             return throwException(TypeException, "TypeException: Type mismatch in binary operation %s", node->value);
         }
 
-        if (strcmp(node->value, "-") == 0) return makeInt(left.as.number - right.as.number);
-        if (strcmp(node->value, "*") == 0) return makeInt(left.as.number * right.as.number);
+        if (strcmp(node->value, "-") == 0) { // -
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                return makeFloat(l - r);
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                return makeInt(left.as.number - right.as.number);
+            }
+        }
+        if (strcmp(node->value, "+") == 0) { // +
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                return makeFloat(l + r);
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                return makeInt(left.as.number + right.as.number);
+            }
+        }
+        if (strcmp(node->value, "*") == 0) { // *
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                return makeFloat(l * r);
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                return makeInt(left.as.number - right.as.number);
+            }
+        }
         if (strcmp(node->value, "/") == 0) {
-            if (right.as.number == 0) {return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");}
-            return makeInt(left.as.number / right.as.number);
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
+                return makeFloat(l / r);
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                if(right.as.number == 0) throwException(DivideByZeroException, "DivideByZeroException: Division by zero. \n");
+                return makeInt(left.as.number / right.as.number);
+            }
+        }
+        if (strcmp(node->value, "//") == 0) {
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
+                return makeInt((int)floor(l / r));
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                if (right.as.number == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
+                return makeInt((int)floor((float)left.as.number / (float)right.as.number));
+            }
+        }
+        if (strcmp(node->value, "**")==0) {
+            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
+                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
+                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+                return makeFloat(pow(l, r));
+            }
+            if (left.type == VAL_INT && right.type == VAL_INT) {
+                return makeInt(pow(left.as.number, right.as.number));
+            }
         }
 
         // Logic & Comparison
