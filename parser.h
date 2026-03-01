@@ -15,25 +15,42 @@ typedef enum {
     NODE_RETURN,
     NODE_PRINT,
     NODE_IF,
+    NODE_IMPORT,
+    NODE_BREAK,
     NODE_STRING,
-    NODE_WHILE
+    NODE_WHILE,
+    NODE_FLOAT,
+    NODE_LIST_LITERAL,
+    NODE_DICT_LITERAL,
+    NODE_INDEX_ACCESS
 } NodeType;
-
-typedef struct Exception{
-    char* text;
-    int line;
-    int character;
-} Exception;
 
 typedef struct ASTNode {
     NodeType type;
-    char* value;                // The name or number (as a string)
-    struct ASTNode* left;       // Left child
-    struct ASTNode* right;      // Right child
+    char* value;
+    struct ASTNode* left;
+    struct ASTNode* right;
     struct ASTNode** children; 
     int childCount;
     int childCapacity;
 } ASTNode;
+
+typedef enum {
+    RuntimeException, // General one.
+    DivideByZeroException,
+    SyntaxException,
+    IdentifierNotFoundException,
+    FileNotFoundException,
+    ArgumentException,
+    IndexOutOfBoundsException,
+    EntryNotFoundException,
+    TypeException
+}ExceptionType;
+
+typedef struct{
+    ExceptionType type;
+    char* message;
+}Exception;
 
 ASTNode* parseFile(TokenStream Tokens);
 void freeAST(ASTNode* node);

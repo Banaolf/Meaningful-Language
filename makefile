@@ -1,42 +1,35 @@
 # Configuración del compilador
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -static -O3 -Wall -Wextra -lm
 AR = ar
 ARFLAGS = rcs
 
-# Nombres de archivos
 LIB_NAME = libcore.a
 TARGET = meaningful.exe
 
 # Objetos necesarios
-LIB_OBJS = lexer.o syntax.o
+LIB_OBJS = lexer.o parser.o
 MAIN_OBJ = interpreter.o
 
-# Regla principal (la que se ejecuta al escribir 'make')
 all: $(TARGET)
 
-# 1. Crear el ejecutable final enlazando el objeto principal con la librería
 $(TARGET): $(MAIN_OBJ) $(LIB_NAME)
 	$(CC) $(CFLAGS) -o $(TARGET) $(MAIN_OBJ) -L. -lcore
-
-# 2. Crear la biblioteca estática a partir de los objetos del lexer y syntax
+	del *.o *.a 
+#The above command is only for windows.
 $(LIB_NAME): $(LIB_OBJS)
 	$(AR) $(ARFLAGS) $(LIB_NAME) $(LIB_OBJS)
 
-# 3. Compilar los archivos .c a archivos objeto .o
-# Se agregan los .h como dependencias para que si cambias un header, se recompile el .c
-lexer.o: lexer.c lexer.h syntax.h
+lexer.o: lexer.c lexer.h parser.h
 	$(CC) $(CFLAGS) -c lexer.c
 
-syntax.o: syntax.c syntax.h lexer.h
-	$(CC) $(CFLAGS) -c syntax.c
+parser.o: parser.c parser.h lexer.h
+	$(CC) $(CFLAGS) -c parser.c
 
-interpreter.o: interpreter.c syntax.h lexer.h
+interpreter.o: interpreter.c parser.h lexer.h
 	$(CC) $(CFLAGS) -c interpreter.c
 
-# Limpiar archivos temporales y el ejecutable
 clean:
-	rm -f *.o *.a $(TARGET)
+	del -f *.o *.a *.exe #same here
 
-# Evitar conflictos con archivos que se llamen igual que las reglas
 .PHONY: all clean
