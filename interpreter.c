@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "lexer.h"
+#include <ctype.h>
 #include <stddef.h>
 #include <stddef.h>
 #include <stdarg.h>
@@ -11,7 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.46.3"
+#define VERSION "ALPHA.0.99.47.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -54,7 +55,6 @@ struct Value {
     } as;
 };
 
-// Helper macros for the Value/Object system
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
 #define AS_OBJECT(value)    ((value).as.obj)
 #define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
@@ -63,7 +63,6 @@ struct Value {
 #define IS_LIST(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_LIST)
 #define IS_DICT(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_DICT)
 
-// Cast a Value to a specific C type. Only use after checking with IS_ macros.
 typedef struct ObjString {
     Object obj;
     size_t length;
@@ -72,6 +71,8 @@ typedef struct ObjString {
 
 #define AS_STRING(value)    ((ObjString*)AS_OBJECT(value))
 #define AS_CSTRING(value)   (AS_STRING(value)->chars)
+#define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
+#define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
 
 typedef struct ValueList {
     Object obj;
@@ -80,7 +81,6 @@ typedef struct ValueList {
     int capacity;
 } ValueList;
 
-#define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
 
 typedef struct DictEntry {
     char* key;
@@ -91,9 +91,16 @@ typedef struct DictEntry {
 typedef struct ValueDict {
     Object obj;
     DictEntry* head;
+    int len;
 } ValueDict;
 
-#define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
+bool isVal(Value val, ValueType type){
+    if (val.type == type) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 // Value constructors
 Value make(ValueType type, ...) {
@@ -101,7 +108,7 @@ Value make(ValueType type, ...) {
     va_start(args, type);
     Value result;
     result.type = type;
-    if (type == VAL_INT){ // takes one argument, the int
+    if (type == VAL_INT){ // Takes one argument, int
         int argument = va_arg(args, int);
         result.as.number = argument;
     } else if (type == VAL_OBJECT) {
@@ -139,7 +146,7 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
 
 // --- Garbage Collector ---
 
-Object* allObjects = NULL; // Head of the intrusive list of all objects
+Object* allObjects = NULL; 
 
 static Object* allocateObject(size_t size, ObjectType type) {
     Object* object = (Object*)malloc(size);
@@ -881,18 +888,68 @@ Value native_clock(int argCount, Value* args) {
     return make(VAL_INT, (int)(clock() * 1000 / CLOCKS_PER_SEC));
 }
 
-// --- Initialization ---
-
-void initSymbolTable() {
-    currentScope = malloc(sizeof(Scope));
-    currentScope->symbols = NULL;
-    currentScope->prev = NULL;
+Value native_length(int argc, Value* args) {
+    if (argc != 1) {
+        return throwException(ArgumentException, "ArgumentException: length() takes 1 argument.");
+    }
+    Value val = args[0];
+    if (IS_STRING(val)) {
+        return make(VAL_INT, AS_STRING(val)->length);
+    }
+    if (IS_DICT(val)) {
+        return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
+    }
+    if (IS_LIST(val)){
+        return make(VAL_INT, AS_LIST(val)->count);
+    }
+    if (isVal(val, VAL_INT)) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d", val.as.number);
+        return make(VAL_INT, (int)strlen(buf));
+    }
+    if (isVal(val, VAL_FLOAT)) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%g", val.as.decimal);
+        return make(VAL_INT, (int)strlen(buf));
+    }
+    return throwException(TypeException, "TypeException: Length needs a valid type.\n");
 }
+
+Value native_isdigit(int argc, Value* args){
+    if (argc != 1){
+        return throwException(ArgumentException, "ArgumentException: isdigit() takes 1 argument.\n");
+    }
+    Value val = args[0];
+    if (!isVal(val, VAL_OBJECT)){
+        return throwException(ArgumentException, "ArgumentException: isdigit() takes a string argument.\n");
+    }
+    if (!IS_STRING(val)) {return throwException(TypeException, "TypeException: isdigit() takes a string argument.\n");}
+    if (AS_STRING(val)->length < 1){
+        return make(VAL_INT, 0);
+    }
+    char* str = AS_CSTRING(val);
+    for (int i = 0; i < strlen(str); i++){
+        if (!isdigit(str[i])){
+            return make(VAL_INT, 0);
+        }
+    }
+    return make(VAL_INT, 1);
+}
+
+// --- Initialization ---
 
 void initNatives() {
     // These will be defined in the global scope created by initSymbolTable
     defineNative("input", native_input);
     defineNative("clock", native_clock);
+    defineNative("length", native_length);
+    defineNative("sIsDigit", native_isdigit);
+}
+
+void initSymbolTable() {
+    currentScope = malloc(sizeof(Scope));
+    currentScope->symbols = NULL;
+    currentScope->prev = NULL;
 }
 
 // Helper function to read a file into a string buffer
