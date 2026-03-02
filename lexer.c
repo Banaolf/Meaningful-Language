@@ -78,7 +78,7 @@ TokenStream* lex(char* source) {
 
         if (*c == ':') {
             if (*(c+1) == ':') {
-                while (*c != '\0' || *c != '\n'){c++;}
+                while (*c != '\0' || *c != '\n'){c++;} // COMMENTS!!
                 continue;
             } else {
                 addToken(stream, TOKEN_COLON, ":", line, character);
