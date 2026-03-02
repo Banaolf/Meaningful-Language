@@ -12,7 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.47.1"
+#define VERSION "ALPHA.0.99.48.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -803,7 +803,7 @@ Value evaluate(ASTNode* node) {
 
     // 10. While Loops
     if (node->type == NODE_WHILE) {
-        while(1) {
+        while(true) {
             Value cond = evaluate(node->children[0]);
             if (cond.type == VAL_ERR) return cond;
             int isTrue = 0; // Default to false
@@ -812,6 +812,21 @@ Value evaluate(ASTNode* node) {
 
             if (!isTrue) break;
 
+            Value res = evaluate(node->children[1]); // Execute body once
+            if (res.type == VAL_ERR) return res;
+            if (res.type == VAL_BREAK) break;
+            if (res.type == VAL_RETURN) return res;
+        }
+        return make(VAL_VOID);
+    }
+
+    //10.1 Repeat loops
+    if (node->type == NODE_REPEAT) {
+        Value times = evaluate(node->children[0]);
+        if (times.type == VAL_ERR) return times;
+        const int timesInt = times.as.number;
+        if (timesInt <= 0) {return throwException(ArgumentException, "ArgumentException: repeat expects count to be more than 0.\n");}
+        for (int i = 0; i < timesInt; i++){
             Value res = evaluate(node->children[1]); // Execute body once
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;

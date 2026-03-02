@@ -22,7 +22,8 @@ typedef enum {
     NODE_FLOAT,
     NODE_LIST_LITERAL,
     NODE_DICT_LITERAL,
-    NODE_INDEX_ACCESS
+    NODE_INDEX_ACCESS,
+    NODE_REPEAT
 } NodeType;
 
 typedef struct ASTNode {

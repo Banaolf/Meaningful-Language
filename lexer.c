@@ -32,17 +32,18 @@ void finalCleanup(TokenStream* stream) {
     free(stream->tokens);
     free(stream);
 }
-
+int line = 0;
+int character = 0;
 // Add a token to the list and grow if full
-void addToken(TokenStream* stream, TokenType type, char* value, int ln, int ch) {
+void addToken(TokenStream* stream, TokenType type, char* value) {
     if (stream->size == stream->capacity) {
         stream->capacity *= 2;
         stream->tokens = realloc(stream->tokens, sizeof(Token) * stream->capacity);
     }
     stream->tokens[stream->size].type = type;
     stream->tokens[stream->size].value = strdup(value); // Copy string to safe memory
-    stream->tokens[stream->size].ln = ln;
-    stream->tokens[stream->size].character = ch;
+    stream->tokens[stream->size].ln = line;
+    stream->tokens[stream->size].character = character;
     stream->size++;
 }
 
@@ -65,9 +66,6 @@ TokenStream* lex(char* source) {
     TokenStream* stream = createTokenStream();
     char* c = source;
 
-    int line = 0;
-    int character = 0;
-
     while (*c != '\0') {
         character = character + 1;
         if (isspace(*c)) {
@@ -81,10 +79,16 @@ TokenStream* lex(char* source) {
                 while (*c != '\0' || *c != '\n'){c++;} // COMMENTS!!
                 continue;
             } else {
-                addToken(stream, TOKEN_COLON, ":", line, character);
+                addToken(stream, TOKEN_COLON, ":");
                 c++;
                 continue;
             }
+        }
+
+        if (*c == '.'){
+            addToken(stream, TOKEN_DOT, ".");
+            c++;
+            continue;
         }
 
         if (isalnum(*c) || *c == '_' ) {
@@ -93,15 +97,15 @@ TokenStream* lex(char* source) {
             while (isalnum(*c) || *c == '_' ) buffer[i++] = *c++;
 
             if (get_keyword_type(buffer)) {
-                addToken(stream, TOKEN_KEYWORD, buffer, line, character);
+                addToken(stream, TOKEN_KEYWORD, buffer);
             } else if (strcmp(buffer, "true") == 0 || strcmp(buffer, "false") == 0){
-                addToken(stream, TOKEN_BOOLEAN, buffer, line, character);
+                addToken(stream, TOKEN_BOOLEAN, buffer);
             } else if (strcmp(buffer, "non") == 0){
-                addToken(stream, TOKEN_NON, "non", line, character);
+                addToken(stream, TOKEN_NON, "non");
             } else if (is_digit(buffer) == 0) {
-                addToken(stream, TOKEN_NUMBER, buffer, line, character);
+                addToken(stream, TOKEN_NUMBER, buffer);
             } else {
-                addToken(stream, TOKEN_IDENTIFIER, buffer, line, character);
+                addToken(stream, TOKEN_IDENTIFIER, buffer);
             }
             continue;
         }
@@ -118,19 +122,19 @@ TokenStream* lex(char* source) {
             }
             if (pointCount > 1){
                 printf("[LEXER]SyntaxException: Floats cannot have more than 1 . Line: %d, Char: %d\n", line, character);
-                addToken(stream, ERR, "FLOAT", line, character);
+                addToken(stream, ERR, "FLOAT");
             }
             if (strchr(buffer, '.') != NULL){
-                addToken(stream, TOKEN_FLOAT, buffer, line, character); 
+                addToken(stream, TOKEN_FLOAT, buffer); 
             } else{
-                addToken(stream, TOKEN_NUMBER, buffer, line, character);
+                addToken(stream, TOKEN_NUMBER, buffer);
             }
             continue;
         }
         
         if (*c == '(' || *c == ')') {
             char buffer[2] = {*c, '\0'};
-            addToken(stream, TOKEN_PARENTHESIS, buffer, line, character);
+            addToken(stream, TOKEN_PARENTHESIS, buffer);
             c++;
             continue;
         }
@@ -139,26 +143,26 @@ TokenStream* lex(char* source) {
 
         if (*c == '[' || *c == ']') {
             char buffer[2] = {*c, '\0'};
-            addToken(stream, TOKEN_SQUARE, buffer, line, character);
+            addToken(stream, TOKEN_SQUARE, buffer);
             c++;
             continue;
         }
 
         if (*c == '{' || *c == '}') {
             char buffer[2] = {*c, '\0'};
-            addToken(stream, TOKEN_CURLY, buffer, line, character);
+            addToken(stream, TOKEN_CURLY, buffer);
             c++;
             continue;
         }
 
         if (*c == ',') {
-            addToken(stream, TOKEN_COMMA, ",", line, character);
+            addToken(stream, TOKEN_COMMA, ",");
             c++;
             continue;
         }
 
         if (*c == ';') {
-            addToken(stream, TOKEN_SEMICOLON, ";", line, character);
+            addToken(stream, TOKEN_SEMICOLON, ";");
             c++;
             continue;
         }
@@ -166,7 +170,7 @@ TokenStream* lex(char* source) {
         // Handle ==, !=, <=, >=
         if ((*c == '=' || *c == '!' || *c == '<' || *c == '>') && *(c+1) == '=') {
             char buffer[3] = {*c, *(c+1), '\0'};
-            addToken(stream, TOKEN_COMPARISON, buffer, line, character);
+            addToken(stream, TOKEN_COMPARISON, buffer);
             c += 2;
             continue;
         }
@@ -174,7 +178,7 @@ TokenStream* lex(char* source) {
         // Handle <, >
         if (*c == '<' || *c == '>') {
             char buffer[2] = {*c, '\0'};
-            addToken(stream, TOKEN_COMPARISON, buffer, line, character);
+            addToken(stream, TOKEN_COMPARISON, buffer);
             c++;
             continue;
         }
@@ -182,26 +186,26 @@ TokenStream* lex(char* source) {
         if (strchr("+-*/", *c)) {
             if (*(c+1) == '=') {
                 char buffer[3] = {*c, '=', '\0'};
-                addToken(stream, TOKEN_COMPOUND_ASSIGN, buffer, line, character);
+                addToken(stream, TOKEN_COMPOUND_ASSIGN, buffer);
                 c += 2;
                 continue;
-            } else if (*c == '*' && *(c+1) == '*'){ // Native pow()!
-                addToken(stream, TOKEN_OPERATOR, "**", line, character);
+            } else if (*c == '*' && *(c+1) == '*'){ 
+                addToken(stream, TOKEN_OPERATOR, "**");
                 c += 2;
                 continue;
             } else if (*c == '/' && *(c+1) == '/'){
-                addToken(stream, TOKEN_OPERATOR, "//", line, character);
+                addToken(stream, TOKEN_OPERATOR, "//");
                 c += 2;
                 continue;
             }
             char buffer[2] = {*c, '\0'};
-            addToken(stream, TOKEN_OPERATOR, buffer, line, character);
+            addToken(stream, TOKEN_OPERATOR, buffer);
             c++;
             continue;
         }
 
         if (*c == '=') {
-            addToken(stream, TOKEN_EQUALS, "=", line, character);
+            addToken(stream, TOKEN_EQUALS, "=");
             c++;
             continue;
         }
@@ -214,13 +218,13 @@ TokenStream* lex(char* source) {
                 buffer[i++] = *c++;
             }
             if (*c == '"') c++; // Skip closing quote
-            addToken(stream, TOKEN_STRING, buffer, line, character);
+            addToken(stream, TOKEN_STRING, buffer);
             continue;
         }
 
         c++; // Skip unknown characters
     }
 
-    addToken(stream, TOKEN_EOF, "EOF", line, character);
+    addToken(stream, TOKEN_EOF, "EOF");
     return stream;
 }

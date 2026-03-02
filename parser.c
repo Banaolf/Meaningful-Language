@@ -31,7 +31,9 @@ char* tokenTypeToString(TokenType type){
         case TOKEN_SEMICOLON: return "TOKEN_SEMICOLON";
         case TOKEN_COLON: return "TOKEN_COLON";
         case TOKEN_COMPOUND_ASSIGN: return "TOKEN_COMPOUND_ASSIGN";
+        case TOKEN_DOT: return "TOKEN_DOT";
         case TOKEN_FLOAT: return "TOKEN_FLOAT";
+        case ERR: return "ERR";
         default: return "UNKNOWN";
     }
 }
@@ -44,6 +46,7 @@ const char* keywords[] = {
     "end", 
     "Import",
     "break",
+    "repeat",
     NULL
 };
 
@@ -571,8 +574,32 @@ ASTNode* parseStatement() {
         return node;
     }
 
+    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "repeat")== 0){
+        advance();
+        ASTNode* times = parseExpression();
+        ASTNode* node = createNode(NODE_REPEAT, "repeat");
+        addChild(node, times);
+        ASTNode* body = createNode(NODE_PROGRAM, "BODY");
+        addChild(node, body);
+        if (is(TOKEN_SEMICOLON, 0)) {advance();}
+        while (!is(TOKEN_EOF, 0)) {
+            if (parserError) break;
+            if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "end") == 0) {
+                advance(); // Eat 'end'
+                break;
+            }
+            ASTNode* stmt = parseStatement();
+            if (stmt) {
+                addChild(body, stmt);
+            } else if (!parserError) {
+                advance(); // unstick the parser
+            }
+        }
+        return node;
+    }
+
     if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "if") == 0) {
-        advance(); // Eat 'if'
+        advance(); // Eat if
         ASTNode* cond = parseExpression();
         ASTNode* node = createNode(NODE_IF, "if");
         addChild(node, cond);

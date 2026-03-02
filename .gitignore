@@ -13,4 +13,4 @@
 .vscode/    
 .clangd
 .clang-format
-\.installer
+.installer/
