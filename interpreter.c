@@ -1031,9 +1031,9 @@ void runREPL() {
 }
 
 int main(int argc, char *argv[]){
-    if (argc != 2 && argc != 1) {
-        printf("Usage: meaningful [name].mean\n");
-        return 64;
+    if (argc != 3 && argc != 2 && argc != 1) {
+        printf("Usage:\n meaningful [name].mean\n meaningful -v/--version\n meaningful -src/--source\n meaningful -lic/--licence\n meaningful -t/--test [name].mean\n meaningful");
+        return 12; // Exit code: Malformed flags
     } 
     initSymbolTable();
     initNatives();
@@ -1041,38 +1041,78 @@ int main(int argc, char *argv[]){
         runREPL();
         return 0;
     }
-
     if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0){
+        if (argc != 2) {
+            printf("Usage: meaningful -v/--version");
+            return 3;
+        } 
         printf("Meaningful Language, Licenced under BMLL 2.0\n                      Version %s", VERSION);
         return 0;
-    }
-    if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0){
+    } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0){
+        if (argc != 2) {
+            printf("Usage: meaningful -src/--source");
+            return 3;
+        } 
         system("start https://github.com/Banaolf/Meaningful-Language");
         return 0;
-    }
-    if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0){
+    } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0){
+        if (argc != 2) {
+            printf("Usage: meaningful -lic/--licence");
+            return 3;
+        } 
         system("start https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
         return 0;
-    }
-
-    char* src = readFile(argv[1]);
-    if (strcmp(src, "")==0){
-        exit(2);
-    }
-    TokenStream* stream = lex(src);
-    ASTNode* root = parseFile(*stream);
-
-    if (root) {
-        Value result = evaluate(root);
-        if (result.type == VAL_ERR) {
-            return 99;
+    } else if (strcmp(argv[1], "-t") || strcmp(argv[1], "--test")){
+        if (argc != 3) {
+            printf("Usage: meaningful -t/--test [name].mean");
+            return 3;
+        } 
+        char* src = readFile(argv[2]);
+        if (strcmp(src, "")==0){
+            exit(2);
         }
-        freeAST(root);
-    }
+        TokenStream* stream = lex(src);
+        ASTNode* root = parseFile(*stream);
 
-    finalCleanup(stream);
-    free(src);
+        if (root) {
+            Value result = evaluate(root);
+            if (result.type == VAL_ERR) {
+                printf("Test: Something went wrong :(\nFile: %s", argv[2]);
+                return 4; //Exit code: runtime error.
+            } else printf("Test: Succesful");
+            freeAST(root);
+        }
+        finalCleanup(stream);
+        free(src);
+    } else {
+        char* src = readFile(argv[1]);
+        if (strcmp(src, "")==0){
+            exit(2);
+        }
+        TokenStream* stream = lex(src);
+        ASTNode* root = parseFile(*stream);
+
+        if (root) {
+            Value result = evaluate(root);
+            if (result.type == VAL_ERR) {
+                return 4;
+            }
+            freeAST(root);
+        }
+        finalCleanup(stream);
+        free(src);
+    }
     freeSymbolTable();
     collectGarbage();
     return 0;
 }
+/*
+Exit codes
+Pass: 0
+General failure: 1
+File not found: 2
+Malformed flags: 3
+Runtime Error: 4
+Parser Error: 5
+Lexer Error 6
+*/

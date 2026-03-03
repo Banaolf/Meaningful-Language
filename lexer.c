@@ -76,7 +76,11 @@ TokenStream* lex(char* source) {
 
         if (*c == ':') {
             if (*(c+1) == ':') {
-                while (*c != '\0' || *c != '\n'){c++;} // COMMENTS!!
+                while (*c != '\0' || *c != '\n'){character++;c++;} // COMMENTS!!
+                continue;
+            } else if (*(c+1) == ';'){
+                while (*c != '\0' || (*c != ';' && *(c+1) == ':')){character++;c++;} // BLOCK COMMENTS!!
+                if(*c == '\0'){printf("[LEXER] WARN: block comment reaches end of file!");}
                 continue;
             } else {
                 addToken(stream, TOKEN_COLON, ":");
@@ -94,7 +98,7 @@ TokenStream* lex(char* source) {
         if (isalnum(*c) || *c == '_' ) {
             char buffer[256] = {0};
             int i = 0;
-            while (isalnum(*c) || *c == '_' ) buffer[i++] = *c++;
+            while (isalnum(*c) || *c == '_' ) {character++; buffer[i++] = *c++;}
 
             if (get_keyword_type(buffer)) {
                 addToken(stream, TOKEN_KEYWORD, buffer);
@@ -115,6 +119,7 @@ TokenStream* lex(char* source) {
             int i = 0;
             int pointCount = 0;
             while (isdigit(*c) || *c == '.') {
+                character++;
                 buffer[i++] = *c++;
                 if (*c == '.'){
                     pointCount++;
@@ -215,6 +220,7 @@ TokenStream* lex(char* source) {
             char buffer[256] = {0};
             int i = 0;
             while (*c != '"' && *c != '\0') {
+                character++;
                 buffer[i++] = *c++;
             }
             if (*c == '"') c++; // Skip closing quote
@@ -222,7 +228,7 @@ TokenStream* lex(char* source) {
             continue;
         }
 
-        c++; // Skip unknown characters
+        addToken(stream, ERR, "UNKNOWN");
     }
 
     addToken(stream, TOKEN_EOF, "EOF");
