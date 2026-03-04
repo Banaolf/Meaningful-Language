@@ -73,7 +73,7 @@ TokenStream* lex(char* source) {
             c++;
             continue;
         }
-
+    
         if (*c == ':') {
             if (*(c+1) == ':') {
                 while (*c != '\0' && *c != '\n'){character++;c++;} // COMMENTS!!
@@ -206,6 +206,18 @@ TokenStream* lex(char* source) {
             char buffer[2] = {*c, '\0'};
             addToken(stream, TOKEN_OPERATOR, buffer);
             c++;
+            continue;
+        }
+
+        if (strchr("%%", *c)){
+            addToken(stream, TOKEN_OPERATOR, "%%");
+            c++;
+            continue;
+        }
+
+        if (strchr("-", *c) && strchr("/", *c)){
+            addToken(stream, TOKEN_OPERATOR, "-/");
+            c += 2;
             continue;
         }
 

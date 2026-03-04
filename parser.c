@@ -419,7 +419,7 @@ ASTNode* parsePower() {
 ASTNode* parseTerm() {
     ASTNode* left = parsePower();
 
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0 || strcmp(peek(0).value, "//") == 0)){
+    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0 || strcmp(peek(0).value, "//") == 0 ||strcmp(peek(0).value, "%%")==0||strcmp(peek(0).value, "-/")==0)){
         if (parserError) break; 
         Token op = peek(0);
         advance();

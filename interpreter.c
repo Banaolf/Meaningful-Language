@@ -536,6 +536,21 @@ Value evaluate(ASTNode* node) {
             if (strcmp(node->value, "**") == 0) {
                 float res = powf(l, r);
                 return eitherFloat ? make(VAL_FLOAT, res) : make(VAL_INT, (int)res);
+            } 
+            if (strcmp(node->value, "%%") == 0) {
+                if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
+                return make(VAL_INT, (int)l % (int)r);
+            }
+            if (strcmp(node->value, "-/") == 0) {
+                float base = left.type == VAL_FLOAT ? left.as.decimal : (float)left.as.number;
+                float num  = right.type == VAL_FLOAT ? right.as.decimal : (float)right.as.number;
+                if (base == 0) return throwException(DivideByZeroException, "DivideByZeroException: Root base cannot be 0.\n");
+                float result = powf(num, 1.0f / base);
+                // Return int only if both inputs were ints and result is whole
+                if (left.type == VAL_INT && right.type == VAL_INT && floorf(result) == result) {
+                    return make(VAL_INT, (int)result);
+                }
+                return make(VAL_FLOAT, result);
             }
         }
 
