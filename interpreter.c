@@ -1108,6 +1108,7 @@ void runREPL() {
 }
 
 int main(int argc, char *argv[]) {
+    int returningVal = 0;
     if (argc != 3 && argc != 2 && argc != 1) {
         printf("Usage:\n meaningful [name].mean\n meaningful -v/--version\n meaningful -src/--source\n meaningful -lic/--licence\n meaningful -t/--test [name].mean\n meaningful");
         return 3;
@@ -1140,12 +1141,18 @@ int main(int argc, char *argv[]) {
             Value result = evaluate(root);
             if (result.type == VAL_ERR) {
                 printf("Test: Something went wrong :(\nFile: %s", argv[2]);
-                return 4;
+                freeAST(root);
+                finalCleanup(stream);
+                free(src);
+                returningVal = 4;
+                goto end_of_interpreter;
             } else printf("Test: Successful");
             freeAST(root);
         }
         finalCleanup(stream);
         free(src);
+        returningVal = 0;
+        goto end_of_interpreter;
     } else {
         char* src = readFile(argv[1]);
         if (strcmp(src, "") == 0) exit(2);
@@ -1153,15 +1160,17 @@ int main(int argc, char *argv[]) {
         ASTNode* root = parseFile(*stream);
         if (root) {
             Value result = evaluate(root);
-            if (result.type == VAL_ERR) return 4;
+            if (result.type == VAL_ERR) returningVal = 4; freeAST(root); finalCleanup(stream); free(src); goto end_of_interpreter;
             freeAST(root);
         }
         finalCleanup(stream);
         free(src);
+        returningVal = 0; //same thing as using the goto
     }
+    end_of_interpreter: //Added just for -t
     freeSymbolTable();
     collectGarbage();
-    return 0;
+    return returningVal;
 }
 /*
 Exit codes
