@@ -76,11 +76,11 @@ TokenStream* lex(char* source) {
 
         if (*c == ':') {
             if (*(c+1) == ':') {
-                while (*c != '\0' || *c != '\n'){character++;c++;} // COMMENTS!!
+                while (*c != '\0' && *c != '\n'){character++;c++;} // COMMENTS!!
                 continue;
             } else if (*(c+1) == ';'){
-                while (*c != '\0' || (*c != ';' && *(c+1) == ':')){character++;c++;} // BLOCK COMMENTS!!
-                if(*c == '\0'){printf("[LEXER] WARN: block comment reaches end of file!");}
+                while (*c != '\0' && (*c != ';' && *(c+1) == ':')){character++;c++;} // BLOCK COMMENTS!!
+                if(*c == '\0'){printf("[LEXER] WARN: block comment reaches end of file!");}else{c+=2;}
                 continue;
             } else {
                 addToken(stream, TOKEN_COLON, ":");
