@@ -359,8 +359,6 @@ void freeSymbolTable() {
         HASH_ITER(hh, scopeToFree->symbols, s, tmp) {
             HASH_DEL(scopeToFree->symbols, s);
             if (s->name) free(s->name);
-            // Note: We don't free s->value strings here as ownership is complex.
-            // The GC will handle strings allocated with ml_alloc.
             free(s);
         }
         free(scopeToFree);
@@ -421,6 +419,7 @@ void collectGarbage() {
 void printValueRecursive(Value val) {
     if (val.type == VAL_INT) printf("%d", val.as.number);
     else if (val.type == VAL_VOID) printf("non");
+    else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_STRING(val)) printf("%s", AS_CSTRING(val));
     else if (IS_LIST(val)) {
         ValueList* list = AS_LIST(val);
@@ -471,6 +470,9 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_NUMBER) {
         return make(VAL_INT, atoi(node->value));
     }
+    if (node->type == NODE_FLOAT) {
+        return make(VAL_FLOAT, atof(node->value));
+    }
     if (node->type == NODE_STRING) {
         return make(VAL_OBJECT, (Object*)allocateString(node->value, strlen(node->value)));
     }
@@ -479,6 +481,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_VARIABLE) {
         return getVariable(node->value);
     }
+
     // 3. Binary Operations
     if (node->type == NODE_BINARY_OP) {
         Value left = evaluate(node->left);
@@ -487,104 +490,66 @@ Value evaluate(ASTNode* node) {
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
-        if (strcmp(node->value, "+") == 0) {
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                return make(VAL_INT, left.as.number + right.as.number);
-            }
-            if (IS_STRING(left) && IS_STRING(right)) {
-                size_t len1 = AS_STRING(left)->length;
-                size_t len2 = AS_STRING(right)->length;
-                char* result_chars = malloc(len1 + len2 + 1);
-                memcpy(result_chars, AS_CSTRING(left), len1);
-                memcpy(result_chars + len1, AS_CSTRING(right), len2 + 1);
-                ObjString* result_obj = allocateString(result_chars, len1 + len2);
-                free(result_chars);
-                return make(VAL_OBJECT, (Object*)result_obj);
-            }
-        }
-        
-        // For other operators, ensure we have numbers
-        if (left.type != VAL_INT || right.type != VAL_INT) {
-            return throwException(TypeException, "TypeException: Type mismatch in binary operation %s", node->value);
+        // String concatenation
+        if (strcmp(node->value, "+") == 0 && IS_STRING(left) && IS_STRING(right)) {
+            size_t len1 = AS_STRING(left)->length;
+            size_t len2 = AS_STRING(right)->length;
+            char* result_chars = malloc(len1 + len2 + 1);
+            memcpy(result_chars, AS_CSTRING(left), len1);
+            memcpy(result_chars + len1, AS_CSTRING(right), len2 + 1);
+            ObjString* result_obj = allocateString(result_chars, len1 + len2);
+            free(result_chars);
+            return make(VAL_OBJECT, (Object*)result_obj);
         }
 
-        if (strcmp(node->value, "-") == 0) { // -
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return make(VAL_FLOAT, l - r);
+        // Float/int arithmetic (promote to float if either side is float)
+        if (strcmp(node->value, "+") == 0 || strcmp(node->value, "-") == 0 ||
+            strcmp(node->value, "*") == 0 || strcmp(node->value, "/") == 0 ||
+            strcmp(node->value, "//") == 0 || strcmp(node->value, "**") == 0) {
+
+            bool eitherFloat = (left.type == VAL_FLOAT || right.type == VAL_FLOAT);
+            float l = left.type == VAL_FLOAT ? left.as.decimal : (float)left.as.number;
+            float r = right.type == VAL_FLOAT ? right.as.decimal : (float)right.as.number;
+
+            if (left.type != VAL_INT && left.type != VAL_FLOAT)
+                return throwException(TypeException, "TypeException: Type mismatch in binary operation '%s'.\n", node->value);
+            if (right.type != VAL_INT && right.type != VAL_FLOAT)
+                return throwException(TypeException, "TypeException: Type mismatch in binary operation '%s'.\n", node->value);
+
+            if (strcmp(node->value, "+") == 0) {
+                return eitherFloat ? make(VAL_FLOAT, l + r) : make(VAL_INT, (int)(l + r));
             }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                return make(VAL_INT, left.as.number - right.as.number);
+            if (strcmp(node->value, "-") == 0) {
+                return eitherFloat ? make(VAL_FLOAT, l - r) : make(VAL_INT, (int)(l - r));
             }
-        }
-        if (strcmp(node->value, "+") == 0) { // +
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return make(VAL_FLOAT, l + r);
+            if (strcmp(node->value, "*") == 0) {
+                return eitherFloat ? make(VAL_FLOAT, l * r) : make(VAL_INT, (int)(l * r));
             }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                return make(VAL_INT, left.as.number + right.as.number);
-            }
-        }
-        if (strcmp(node->value, "*") == 0) { // *
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return make(VAL_VOID, l * r);
-            }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                return make(VAL_INT, left.as.number - right.as.number);
-            }
-        }
-        if (strcmp(node->value, "/") == 0) {
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+            if (strcmp(node->value, "/") == 0) {
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
-                return make(VAL_VOID, l / r);
+                return make(VAL_FLOAT, l / r); // true division always returns float
             }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                if(right.as.number == 0) throwException(DivideByZeroException, "DivideByZeroException: Division by zero. \n");
-                return make(VAL_INT, left.as.number / right.as.number);
-            }
-        }
-        if (strcmp(node->value, "//") == 0) {
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
+            if (strcmp(node->value, "//") == 0) {
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
                 return make(VAL_INT, (int)floor(l / r));
             }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                if (right.as.number == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
-                return make(VAL_INT, (int)floor((float)left.as.number / (float)right.as.number));
-            }
-        }
-        if (strcmp(node->value, "**")==0) {
-            if (left.type == VAL_FLOAT || right.type == VAL_FLOAT) {
-                float l = left.type == VAL_INT ? (float_t)left.as.number : left.as.decimal;
-                float r = right.type == VAL_INT ? (float_t)right.as.number : right.as.decimal;
-                return make(VAL_VOID, pow(l, r));
-            }
-            if (left.type == VAL_INT && right.type == VAL_INT) {
-                return make(VAL_INT, pow(left.as.number, right.as.number));
+            if (strcmp(node->value, "**") == 0) {
+                float res = powf(l, r);
+                return eitherFloat ? make(VAL_FLOAT, res) : make(VAL_INT, (int)res);
             }
         }
 
         // Logic & Comparison
         if (strcmp(node->value, "and") == 0) return make(VAL_INT, left.as.number && right.as.number);
-        if (strcmp(node->value, "or") == 0) return make(VAL_INT, left.as.number || right.as.number);
+        if (strcmp(node->value, "or") == 0)  return make(VAL_INT, left.as.number || right.as.number);
         
         if (strcmp(node->value, "==") == 0) {
             if (IS_STRING(left) && IS_STRING(right)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
             return make(VAL_INT, left.as.number == right.as.number);
         }
         if (strcmp(node->value, "!=") == 0) return make(VAL_INT, left.as.number != right.as.number);
-        
-        if (strcmp(node->value, "<") == 0) return make(VAL_INT, left.as.number < right.as.number);
-        if (strcmp(node->value, ">") == 0) return make(VAL_INT, left.as.number > right.as.number);
+        if (strcmp(node->value, "<")  == 0) return make(VAL_INT, left.as.number < right.as.number);
+        if (strcmp(node->value, ">")  == 0) return make(VAL_INT, left.as.number > right.as.number);
         if (strcmp(node->value, "<=") == 0) return make(VAL_INT, left.as.number <= right.as.number);
         if (strcmp(node->value, ">=") == 0) return make(VAL_INT, left.as.number >= right.as.number);
     }
@@ -607,20 +572,16 @@ Value evaluate(ASTNode* node) {
             if (index.type == VAL_ERR) return index;
 
             if (IS_LIST(collection)) {
-                if (index.type != VAL_INT) {return throwException(TypeException, "TypeException: List index must be an integer.\n");}
+                if (index.type != VAL_INT) return throwException(TypeException, "TypeException: List index must be an integer.\n");
                 int i = index.as.number;
                 ValueList* list = AS_LIST(collection);
-                if (i < 0 || i >= list->count) {
-                    return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: List index out of bounds.\n");
-                }
+                if (i < 0 || i >= list->count) return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: List index out of bounds.\n");
                 list->items[i] = rvalue;
                 return rvalue;
             }
 
             if (IS_DICT(collection)) {
-                if (!IS_STRING(index)) {
-                    return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
-                }
+                if (!IS_STRING(index)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
                 char* key = AS_CSTRING(index);
                 ValueDict* dict = AS_DICT(collection);
                 DictEntry* entry;
@@ -636,7 +597,28 @@ Value evaluate(ASTNode* node) {
                 return rvalue;
             }
 
-            return throwException(SyntaxException, "SyntaxException: Can only index into lists or dictionaries.\n");//Plans for string indexing exist
+            return throwException(SyntaxException, "SyntaxException: Can only index into lists or dictionaries.\n");
+        }
+
+        // Member assignment: obj.key = value  (obj must be a dict)
+        if (lvalue->type == NODE_MEMBER_ACCESS) {
+            Value obj = evaluate(lvalue->left);
+            if (obj.type == VAL_ERR) return obj;
+            if (!IS_DICT(obj)) return throwException(TypeException, "TypeException: Attribute assignment is only supported on dictionaries.\n");
+
+            ValueDict* dict = AS_DICT(obj);
+            char* key = lvalue->value; // attribute name is stored in node->value
+            DictEntry* entry;
+            HASH_FIND_STR(dict->head, key, entry);
+            if (entry) {
+                entry->value = rvalue;
+            } else {
+                entry = malloc(sizeof(DictEntry));
+                entry->key = strdup(key);
+                entry->value = rvalue;
+                HASH_ADD_STR(dict->head, key, entry);
+            }
+            return rvalue;
         }
 
         return throwException(RuntimeException, "RuntimeException: Invalid assignment target.\n");
@@ -658,19 +640,15 @@ Value evaluate(ASTNode* node) {
         Value result = make(VAL_VOID);
         int argCount = node->childCount;
 
-        // A. Evaluate Arguments
-        Value* argValues = malloc(sizeof(Value) * argCount);
-        for(int i=0; i<argCount; i++) {
+        Value* argValues = malloc(sizeof(Value) * (argCount > 0 ? argCount : 1));
+        for (int i = 0; i < argCount; i++) {
             argValues[i] = evaluate(node->children[i]);
-            if (argValues[i].type == VAL_ERR) {
-                free(argValues);
-                return argValues[i];
-            }
+            if (argValues[i].type == VAL_ERR) { free(argValues); return argValues[i]; }
         }
 
         if (callable->nativeFunc) {
             result = callable->nativeFunc(argCount, argValues);
-        } else { // User-defined function
+        } else {
             ASTNode* funcDef = callable->funcNode;
             int paramCount = funcDef->childCount - 1;
 
@@ -680,44 +658,177 @@ Value evaluate(ASTNode* node) {
             }
 
             enterScope();
-            for(int i=0; i<paramCount; i++) {
-                char* paramName = funcDef->children[i]->value;
-                defineVariable(paramName, argValues[i]);
+            for (int i = 0; i < paramCount; i++) {
+                defineVariable(funcDef->children[i]->value, argValues[i]);
             }
-            // B.2. Execute Body
             ASTNode* body = funcDef->children[paramCount];
             if (body && body->children) {
-                for(int i=0; i<body->childCount; i++) {
+                for (int i = 0; i < body->childCount; i++) {
                     ASTNode* stmt = body->children[i];
                     if (stmt->type == NODE_RETURN) {
                         result = make(VAL_RETURN, evaluate(stmt->right));
-                        goto end_call_user; // Return immediately
-                    }
-                    Value stmtVal = evaluate(stmt);
-                    if (stmtVal.type == VAL_ERR) {
-                        result = stmtVal;
                         goto end_call_user;
                     }
+                    Value stmtVal = evaluate(stmt);
+                    if (stmtVal.type == VAL_ERR) { result = stmtVal; goto end_call_user; }
                 }
             }
             end_call_user: exitScope();
         }
-
         end_call: free(argValues);
         return result;
     }
 
+    // 6b. Method Calls: obj.method(args...)
+    // NODE_METHOD_CALL: value = method name, left = object, children = args
+    if (node->type == NODE_METHOD_CALL) {
+        Value obj = evaluate(node->left);
+        if (obj.type == VAL_ERR) return obj;
+
+        int argCount = node->childCount;
+        Value* argValues = malloc(sizeof(Value) * (argCount > 0 ? argCount : 1));
+        for (int i = 0; i < argCount; i++) {
+            argValues[i] = evaluate(node->children[i]);
+            if (argValues[i].type == VAL_ERR) { free(argValues); return argValues[i]; }
+        }
+
+        const char* method = node->value;
+        Value result = make(VAL_VOID);
+
+        // --- String methods ---
+        if (IS_STRING(obj)) {
+            char* str = AS_CSTRING(obj);
+            size_t len = AS_STRING(obj)->length;
+
+            if (strcmp(method, "length") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: length() takes 0 arguments.\n"); }
+                result = make(VAL_INT, (int)len);
+
+            } else if (strcmp(method, "upper") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: upper() takes 0 arguments.\n"); }
+                char* buf = malloc(len + 1);
+                for (size_t i = 0; i < len; i++) buf[i] = toupper((unsigned char)str[i]);
+                buf[len] = '\0';
+                result = make(VAL_OBJECT, (Object*)allocateString(buf, len));
+                free(buf);
+
+            } else if (strcmp(method, "lower") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: lower() takes 0 arguments.\n"); }
+                char* buf = malloc(len + 1);
+                for (size_t i = 0; i < len; i++) buf[i] = tolower((unsigned char)str[i]);
+                buf[len] = '\0';
+                result = make(VAL_OBJECT, (Object*)allocateString(buf, len));
+                free(buf);
+
+            } else if (strcmp(method, "contains") == 0) {
+                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: contains() takes 1 string argument.\n"); }
+                result = make(VAL_INT, strstr(str, AS_CSTRING(argValues[0])) != NULL ? 1 : 0);
+
+            } else if (strcmp(method, "slice") == 0) {
+                // str.slice(start, end) — end exclusive, like Python str[start:end]
+                if (argCount != 2 || argValues[0].type != VAL_INT || argValues[1].type != VAL_INT) { free(argValues); return throwException(ArgumentException, "ArgumentException: slice() takes 2 integer arguments.\n"); }
+                int start = argValues[0].as.number;
+                int end   = argValues[1].as.number;
+                if (start < 0) start = 0;
+                if (end > (int)len) end = (int)len;
+                if (start >= end) { result = make(VAL_OBJECT, (Object*)allocateString("", 0)); }
+                else {
+                    result = make(VAL_OBJECT, (Object*)allocateString(str + start, end - start));
+                }
+
+            } else {
+                free(argValues);
+                return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: String has no method '%s'.\n", method);
+            }
+
+        // --- List methods ---
+        } else if (IS_LIST(obj)) {
+            ValueList* list = AS_LIST(obj);
+
+            if (strcmp(method, "append") == 0) {
+                if (argCount != 1) { free(argValues); return throwException(ArgumentException, "ArgumentException: append() takes 1 argument.\n"); }
+                if (list->count >= list->capacity) {
+                    list->capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+                    list->items = realloc(list->items, sizeof(Value) * list->capacity);
+                }
+                list->items[list->count++] = argValues[0];
+                result = make(VAL_VOID);
+
+            } else if (strcmp(method, "pop") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: pop() takes 0 arguments.\n"); }
+                if (list->count == 0) { free(argValues); return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: Cannot pop from an empty list.\n"); }
+                result = list->items[--list->count];
+
+            } else if (strcmp(method, "length") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: length() takes 0 arguments.\n"); }
+                result = make(VAL_INT, list->count);
+
+            } else {
+                free(argValues);
+                return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: List has no method '%s'.\n", method);
+            }
+
+        // --- Dict methods ---
+        } else if (IS_DICT(obj)) {
+            ValueDict* dict = AS_DICT(obj);
+
+            if (strcmp(method, "has") == 0) {
+                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: has() takes 1 string argument.\n"); }
+                DictEntry* entry;
+                HASH_FIND_STR(dict->head, AS_CSTRING(argValues[0]), entry);
+                result = make(VAL_INT, entry != NULL ? 1 : 0);
+
+            } else if (strcmp(method, "remove") == 0) {
+                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: remove() takes 1 string argument.\n"); }
+                DictEntry* entry;
+                char* key = AS_CSTRING(argValues[0]);
+                HASH_FIND_STR(dict->head, key, entry);
+                if (entry) {
+                    HASH_DEL(dict->head, entry);
+                    free(entry->key);
+                    free(entry);
+                }
+                result = make(VAL_VOID);
+
+            } else if (strcmp(method, "length") == 0) {
+                if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: length() takes 0 arguments.\n"); }
+                result = make(VAL_INT, (int)HASH_COUNT(dict->head));
+
+            } else {
+                free(argValues);
+                return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Dict has no method '%s'.\n", method);
+            }
+
+        } else {
+            free(argValues);
+            return throwException(TypeException, "TypeException: Value does not support method calls.\n");
+        }
+
+        free(argValues);
+        return result;
+    }
+
+    // 6c. Member Access: obj.attr  (attr read from a dict by key)
+    if (node->type == NODE_MEMBER_ACCESS) {
+        Value obj = evaluate(node->left);
+        if (obj.type == VAL_ERR) return obj;
+
+        if (!IS_DICT(obj)) return throwException(TypeException, "TypeException: Attribute access with '.' is only supported on dictionaries.\n");
+
+        ValueDict* dict = AS_DICT(obj);
+        DictEntry* entry;
+        HASH_FIND_STR(dict->head, node->value, entry);
+        if (!entry) return throwException(EntryNotFoundException, "EntryNotFoundException: Key '%s' not found.\n", node->value);
+        return entry->value;
+    }
+
     // List
     if (node->type == NODE_LIST_LITERAL) {
-        ValueList* list = allocateList(node->childCount);
+        ValueList* list = allocateList(node->childCount > 0 ? node->childCount : 1);
         list->count = node->childCount;
-
         for (int i = 0; i < list->count; i++) {
             list->items[i] = evaluate(node->children[i]);
-            if (list->items[i].type == VAL_ERR) {
-                // The GC will clean up the partially created list if an error is thrown.
-                return list->items[i];
-            }
+            if (list->items[i].type == VAL_ERR) return list->items[i];
         }
         return make(VAL_OBJECT, (Object*)list);
     }
@@ -727,9 +838,7 @@ Value evaluate(ASTNode* node) {
         ValueDict* dict = allocateDict();
         for (int i = 0; i < node->childCount; i += 2) {
             Value keyVal = evaluate(node->children[i]);
-            if (!IS_STRING(keyVal)) {
-                return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
-            }
+            if (!IS_STRING(keyVal)) return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
 
             Value val = evaluate(node->children[i+1]);
             if (val.type == VAL_ERR) return val;
@@ -741,7 +850,7 @@ Value evaluate(ASTNode* node) {
                 entry->value = val;
             } else {
                 entry = malloc(sizeof(DictEntry));
-                entry->key = strdup(key); // The key is owned by the dict entry now
+                entry->key = strdup(key);
                 entry->value = val;
                 HASH_ADD_STR(dict->head, key, entry);
             }
@@ -757,24 +866,33 @@ Value evaluate(ASTNode* node) {
         if (index.type == VAL_ERR) return index;
 
         if (IS_LIST(collection)) {
-            if (index.type != VAL_INT) { return throwException(TypeException, "TypeException: List index must be an integer.\n"); }
+            if (index.type != VAL_INT) return throwException(TypeException, "TypeException: List index must be an integer.\n");
             int i = index.as.number;
             ValueList* list = AS_LIST(collection);
-            if (i < 0 || i >= list->count) { return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: List index out of bounds.\n"); }
+            if (i < 0 || i >= list->count) return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: List index out of bounds.\n");
             return list->items[i];
         }
 
         if (IS_DICT(collection)) {
-            if (!IS_STRING(index)) { return throwException(TypeException, "TypeException: Dictionary key must be a string.\n"); }
+            if (!IS_STRING(index)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
             ValueDict* dict = AS_DICT(collection);
             char* key = AS_CSTRING(index);
             DictEntry* entry;
             HASH_FIND_STR(dict->head, key, entry);
             if (entry) return entry->value;
-            
             return throwException(EntryNotFoundException, "EntryNotFoundException: Key '%s' not found in dictionary.\n", key);
         }
-        return throwException(SyntaxException, "SyntaxException: Can only index into lists or dictionaries.\n");
+
+        if (IS_STRING(collection)) {
+            if (index.type != VAL_INT) return throwException(TypeException, "TypeException: String index must be an integer.\n");
+            int i = index.as.number;
+            ObjString* s = AS_STRING(collection);
+            if (i < 0 || i >= (int)s->length) return throwException(IndexOutOfBoundsException, "IndexOutOfBoundsException: String index out of bounds.\n");
+            char ch[2] = { s->chars[i], '\0' };
+            return make(VAL_OBJECT, (Object*)allocateString(ch, 1));
+        }
+
+        return throwException(SyntaxException, "SyntaxException: Can only index into lists, dictionaries, or strings.\n");
     }
 
     // 8. Native Print
@@ -789,13 +907,12 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_IF) {
         Value cond = evaluate(node->children[0]);
         if (cond.type == VAL_ERR) return cond;
-        // Treat 0 as false, anything else as true
-        int isTrue = 0; // Default to false
+        int isTrue = 0;
         if (cond.type == VAL_INT) isTrue = cond.as.number != 0;
-        if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0; // Empty string is false, non-empty is true
+        if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0;
 
         if (isTrue) {
-            Value res = evaluate(node->children[1]); // Execute body once
+            Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         }
         return make(VAL_VOID);
@@ -803,16 +920,15 @@ Value evaluate(ASTNode* node) {
 
     // 10. While Loops
     if (node->type == NODE_WHILE) {
-        while(true) {
+        while (true) {
             Value cond = evaluate(node->children[0]);
             if (cond.type == VAL_ERR) return cond;
-            int isTrue = 0; // Default to false
+            int isTrue = 0;
             if (cond.type == VAL_INT) isTrue = cond.as.number != 0;
-            if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0; // Empty string is false, non-empty is true
+            if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0;
 
             if (!isTrue) break;
-
-            Value res = evaluate(node->children[1]); // Execute body once
+            Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -820,14 +936,14 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    //10.1 Repeat loops
+    // 10.1 Repeat loops
     if (node->type == NODE_REPEAT) {
         Value times = evaluate(node->children[0]);
         if (times.type == VAL_ERR) return times;
         const int timesInt = times.as.number;
-        if (timesInt <= 0) {return throwException(ArgumentException, "ArgumentException: repeat expects count to be more than 0.\n");}
-        for (int i = 0; i < timesInt; i++){
-            Value res = evaluate(node->children[1]); // Execute body once
+        if (timesInt <= 0) return throwException(ArgumentException, "ArgumentException: repeat expects count to be more than 0.\n");
+        for (int i = 0; i < timesInt; i++) {
+            Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -838,17 +954,15 @@ Value evaluate(ASTNode* node) {
     // 11. Import
     if (node->type == NODE_IMPORT) {
         Value pathVal = evaluate(node->right);
-        if (!IS_STRING(pathVal)) {
-            return throwException(TypeException, "TypeException: Import path must be a string.\n");
-        }
+        if (!IS_STRING(pathVal)) return throwException(TypeException, "TypeException: Import path must be a string.\n");
         char* source = readFile(AS_CSTRING(pathVal));
-        if (strcmp(source, "")==0){return throwException(FileNotFoundException, "FileNotFoundException: File coudn't be found or is not existant.");}
+        if (strcmp(source, "") == 0) return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be found or does not exist.");
         TokenStream* Stream = lex(source);
         ASTNode* Root = parseFile(*Stream);
         if (Root) {
             Value Result = evaluate(Root);
             freeAST(Root);
-            if(Result.type == VAL_ERR) return Result; //pass the error up
+            if (Result.type == VAL_ERR) return Result;
         }
         finalCleanup(Stream);
         free(source);
@@ -864,7 +978,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {
-            for(int i=0; i<node->childCount; i++) {
+            for (int i = 0; i < node->childCount; i++) {
                 lastResult = evaluate(node->children[i]);
                 if (lastResult.type == VAL_ERR) return lastResult;
                 if (lastResult.type == VAL_RETURN) return lastResult;
@@ -880,43 +994,28 @@ Value evaluate(ASTNode* node) {
 // --- Native C Functions ---
 
 Value native_input(int argCount, Value* args) {
-    (void)args; // Unused parameter
-    if (argCount != 0) {
-        return throwException(ArgumentException, "ArgumentException: input() takes 0 arguments.\n");
-    }
-
+    (void)args;
+    if (argCount != 0) return throwException(ArgumentException, "ArgumentException: input() takes 0 arguments.\n");
     char line[1024];
     if (fgets(line, sizeof(line), stdin)) {
-        // Remove trailing newline
         line[strcspn(line, "\n")] = 0;
         return make(VAL_OBJECT, (Object*)allocateString(line, strlen(line)));
     }
-    return make(VAL_OBJECT, (Object*)allocateString("", 0)); // Return empty string on EOF or error
+    return make(VAL_OBJECT, (Object*)allocateString("", 0));
 }
 
 Value native_clock(int argCount, Value* args) {
-    (void)args; // Unused parameter
-    if (argCount != 0) {
-        return throwException(ArgumentException, "ArgumentException: clock() takes 0 arguments.\n");
-    }
-    // Return milliseconds
+    (void)args;
+    if (argCount != 0) return throwException(ArgumentException, "ArgumentException: clock() takes 0 arguments.\n");
     return make(VAL_INT, (int)(clock() * 1000 / CLOCKS_PER_SEC));
 }
 
 Value native_length(int argc, Value* args) {
-    if (argc != 1) {
-        return throwException(ArgumentException, "ArgumentException: length() takes 1 argument.");
-    }
+    if (argc != 1) return throwException(ArgumentException, "ArgumentException: length() takes 1 argument.");
     Value val = args[0];
-    if (IS_STRING(val)) {
-        return make(VAL_INT, AS_STRING(val)->length);
-    }
-    if (IS_DICT(val)) {
-        return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
-    }
-    if (IS_LIST(val)){
-        return make(VAL_INT, AS_LIST(val)->count);
-    }
+    if (IS_STRING(val)) return make(VAL_INT, AS_STRING(val)->length);
+    if (IS_DICT(val))   return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
+    if (IS_LIST(val))   return make(VAL_INT, AS_LIST(val)->count);
     if (isVal(val, VAL_INT)) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", val.as.number);
@@ -930,23 +1029,14 @@ Value native_length(int argc, Value* args) {
     return throwException(TypeException, "TypeException: Length needs a valid type.\n");
 }
 
-Value native_isdigit(int argc, Value* args){
-    if (argc != 1){
-        return throwException(ArgumentException, "ArgumentException: isdigit() takes 1 argument.\n");
-    }
+Value native_isdigit(int argc, Value* args) {
+    if (argc != 1) return throwException(ArgumentException, "ArgumentException: isdigit() takes 1 argument.\n");
     Value val = args[0];
-    if (!isVal(val, VAL_OBJECT)){
-        return throwException(ArgumentException, "ArgumentException: isdigit() takes a string argument.\n");
-    }
-    if (!IS_STRING(val)) {return throwException(TypeException, "TypeException: isdigit() takes a string argument.\n");}
-    if (AS_STRING(val)->length < 1){
-        return make(VAL_INT, 0);
-    }
+    if (!IS_STRING(val)) return throwException(TypeException, "TypeException: isdigit() takes a string argument.\n");
+    if (AS_STRING(val)->length < 1) return make(VAL_INT, 0);
     char* str = AS_CSTRING(val);
-    for (int i = 0; i < strlen(str); i++){
-        if (!isdigit(str[i])){
-            return make(VAL_INT, 0);
-        }
+    for (int i = 0; str[i]; i++) {
+        if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
     }
     return make(VAL_INT, 1);
 }
@@ -954,7 +1044,6 @@ Value native_isdigit(int argc, Value* args){
 // --- Initialization ---
 
 void initNatives() {
-    // These will be defined in the global scope created by initSymbolTable
     defineNative("input", native_input);
     defineNative("clock", native_clock);
     defineNative("length", native_length);
@@ -967,7 +1056,6 @@ void initSymbolTable() {
     currentScope->prev = NULL;
 }
 
-// Helper function to read a file into a string buffer
 char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
@@ -980,17 +1068,12 @@ char* readFile(const char* path) {
     rewind(file);
 
     char* buffer = (char*)malloc(fileSize + 1);
-    if (buffer == NULL) {
-        exit(74);
-    }
+    if (buffer == NULL) exit(74);
 
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
-    if (bytesRead < fileSize && !feof(file)) {
-        exit(74);
-    }
+    if (bytesRead < fileSize && !feof(file)) exit(74);
 
-    buffer[bytesRead] = '\0'; // Lo hace una string
-
+    buffer[bytesRead] = '\0';
     fclose(file);
     return buffer;
 }
@@ -1004,99 +1087,73 @@ void runREPL() {
         printf(">>>");
         if (!fgets(line, sizeof(line), stdin)) break;
 
-        // Remove the newline character
         line[strcspn(line, "\n")] = 0;
 
         if (strcmp(line, "exit") == 0) break;
         if (strlen(line) == 0) continue;
 
-        // 1. Lex
         TokenStream* stream = lex(line);
-        // 2. Parse
         ASTNode* root = parseFile(*stream);
 
         if (root) {
-            // 3. Evaluate
-            Value rslt = evaluate(root); // NOTE: everything needed is printed in evaluate, no need to print here.
-            if (rslt.type == VAL_ERR) {freeAST(root);finalCleanup(stream);break;}
+            Value rslt = evaluate(root);
+            if (rslt.type == VAL_ERR) { freeAST(root); finalCleanup(stream); break; }
             freeAST(root);
         }
 
-        // 4. Cleanup for this turn
         finalCleanup(stream);
     }
-    // Cleanup when REPL exits
     freeSymbolTable();
     collectGarbage();
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
     if (argc != 3 && argc != 2 && argc != 1) {
         printf("Usage:\n meaningful [name].mean\n meaningful -v/--version\n meaningful -src/--source\n meaningful -lic/--licence\n meaningful -t/--test [name].mean\n meaningful");
-        return 12; // Exit code: Malformed flags
-    } 
+        return 3;
+    }
     initSymbolTable();
     initNatives();
-    if (argc == 1){
+    if (argc == 1) {
         runREPL();
         return 0;
     }
-    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0){
-        if (argc != 2) {
-            printf("Usage: meaningful -v/--version");
-            return 3;
-        } 
+    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+        if (argc != 2) { printf("Usage: meaningful -v/--version"); return 3; }
         printf("Meaningful Language, Licenced under BMLL 2.0\n                      Version %s", VERSION);
         return 0;
-    } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0){
-        if (argc != 2) {
-            printf("Usage: meaningful -src/--source");
-            return 3;
-        } 
+    } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0) {
+        if (argc != 2) { printf("Usage: meaningful -src/--source"); return 3; }
         system("start https://github.com/Banaolf/Meaningful-Language");
         return 0;
-    } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0){
-        if (argc != 2) {
-            printf("Usage: meaningful -lic/--licence");
-            return 3;
-        } 
+    } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0) {
+        if (argc != 2) { printf("Usage: meaningful -lic/--licence"); return 3; }
         system("start https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
         return 0;
-    } else if (strcmp(argv[1], "-t") || strcmp(argv[1], "--test")){
-        if (argc != 3) {
-            printf("Usage: meaningful -t/--test [name].mean");
-            return 3;
-        } 
+    } else if (strcmp(argv[1], "-t") == 0 || strcmp(argv[1], "--test") == 0) {
+        if (argc != 3) { printf("Usage: meaningful -t/--test [name].mean"); return 3; }
         char* src = readFile(argv[2]);
-        if (strcmp(src, "")==0){
-            exit(2);
-        }
+        if (strcmp(src, "") == 0) exit(2);
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
-
         if (root) {
             Value result = evaluate(root);
             if (result.type == VAL_ERR) {
                 printf("Test: Something went wrong :(\nFile: %s", argv[2]);
-                return 4; //Exit code: runtime error.
-            } else printf("Test: Succesful");
+                return 4;
+            } else printf("Test: Successful");
             freeAST(root);
         }
         finalCleanup(stream);
         free(src);
     } else {
         char* src = readFile(argv[1]);
-        if (strcmp(src, "")==0){
-            exit(2);
-        }
+        if (strcmp(src, "") == 0) exit(2);
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
-
         if (root) {
             Value result = evaluate(root);
-            if (result.type == VAL_ERR) {
-                return 4;
-            }
+            if (result.type == VAL_ERR) return 4;
             freeAST(root);
         }
         finalCleanup(stream);

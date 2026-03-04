@@ -149,14 +149,64 @@ ASTNode* parseStatement();
 // Parse primary expression
 ASTNode* parsePrimaryExpression();
 
-// New function to handle postfix operators like () and []
+// New function to handle postfix operators like (), [], and .
 ASTNode* parsePostfixExpression() {
     ASTNode* node = parsePrimaryExpression(); 
     if (!node) return NULL;
 
     while (true) {
         if (parserError) break;
-        if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
+
+        if (is(TOKEN_DOT, 0)) {
+            // Member access: obj.attr  or  obj.method(...)
+            advance(); // Eat '.'
+
+            if (!is(TOKEN_IDENTIFIER, 0)) {
+                throw(TOKEN_IDENTIFIER);
+                freeAST(node);
+                return NULL;
+            }
+
+            Token memberToken = peek(0);
+            advance(); // Eat the attribute/method name
+
+            if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
+                // Method call: obj.method(args...)
+                advance(); // Eat '('
+                ASTNode* callNode = createNode(NODE_METHOD_CALL, memberToken.value);
+                callNode->left = node; // The object being called on
+
+                // Parse arguments
+                if (!is(TOKEN_PARENTHESIS, 0) || strcmp(peek(0).value, ")") != 0) {
+                    while (true) {
+                        ASTNode* arg = parseExpression();
+                        if (!arg) { freeAST(callNode); return NULL; }
+                        addChild(callNode, arg);
+                        if (is(TOKEN_COMMA, 0)) {
+                            advance();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, ")") == 0) {
+                    advance(); // Eat ')'
+                } else {
+                    throw(TOKEN_PARENTHESIS);
+                    freeAST(callNode);
+                    return NULL;
+                }
+                node = callNode;
+            } else {
+                // Plain attribute access: obj.attr
+                // NODE_MEMBER_ACCESS: left = object, value = attribute name
+                ASTNode* accessNode = createNode(NODE_MEMBER_ACCESS, memberToken.value);
+                accessNode->left = node;
+                node = accessNode;
+            }
+
+        } else if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
             // Function call
             if (node->type != NODE_VARIABLE) {
                 printf("[PARSER]At line %d, character %d: .\n", peek(0).ln, peek(0).character);
@@ -399,11 +449,20 @@ ASTNode* parseAddSub() {
     return left;
 }
 
+// Merged parseComparison + parseEquality: handles <, >, <=, >=, ==, !=
+// All are left-associative TOKEN_COMPARISON operators at the same precedence level.
+// This matches Python's behavior where comparisons chain left-to-right.
 ASTNode* parseComparison() {
     ASTNode* left = parseAddSub();
 
-    while (is(TOKEN_COMPARISON, 0) && (strcmp(peek(0).value, "<") == 0 || strcmp(peek(0).value, ">") == 0 || strcmp(peek(0).value, "<=") == 0 || strcmp(peek(0).value, ">=") == 0)) {
+    while (is(TOKEN_COMPARISON, 0)) {
         if (parserError) break;
+        const char* v = peek(0).value;
+        if (strcmp(v, "<")  != 0 && strcmp(v, ">")  != 0 &&
+            strcmp(v, "<=") != 0 && strcmp(v, ">=") != 0 &&
+            strcmp(v, "==") != 0 && strcmp(v, "!=") != 0) {
+            break;
+        }
         Token op = peek(0);
         advance();
         ASTNode* right = parseAddSub();
@@ -416,31 +475,14 @@ ASTNode* parseComparison() {
     return left;
 }
 
-ASTNode* parseEquality() {
-    ASTNode* left = parseComparison();
-
-    while (is(TOKEN_COMPARISON, 0) && (strcmp(peek(0).value, "==") == 0 || strcmp(peek(0).value, "!=") == 0)) {
-        if (parserError) break;
-        Token op = peek(0);
-        advance();
-        ASTNode* right = parseComparison();
-        
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
-        node->left = left;
-        node->right = right;
-        left = node;
-    }
-    return left;
-}
-
 ASTNode* parseLogic() {
-    ASTNode* left = parseEquality();
+    ASTNode* left = parseComparison();
 
     while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "and") == 0 || strcmp(peek(0).value, "or") == 0)) {
         if (parserError) break;
         Token op = peek(0);
         advance();
-        ASTNode* right = parseEquality();
+        ASTNode* right = parseComparison();
         
         ASTNode* node = createNode(NODE_BINARY_OP, op.value);
         node->left = left;
@@ -649,13 +691,13 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    // Handle assignments (`set x = ...` or `x = ...`) and expression statements
+    // Handle assignments and expression statements
     ASTNode* expr = parseExpression();
     if (!expr) return NULL;
 
     if (is(TOKEN_EQUALS, 0) || is(TOKEN_COMPOUND_ASSIGN, 0)) { // It's an assignment
-        if (expr->type != NODE_VARIABLE && expr->type != NODE_INDEX_ACCESS) {
-            printf("[PARSER]SyntaxException: Invalid target for assignment.\n"); //Since this expected nodes, we allow this not to be throw().
+        if (expr->type != NODE_VARIABLE && expr->type != NODE_INDEX_ACCESS && expr->type != NODE_MEMBER_ACCESS) {
+            printf("[PARSER]SyntaxException: Invalid target for assignment.\n");
             parserError = 1;
             freeAST(expr);
             return NULL;

@@ -15,5 +15,5 @@
 .clang-format
 .installer/
 specific.cmd
-run_tests.cmd 
+run_tests.ps1 
 #Still developing the run_tests!
