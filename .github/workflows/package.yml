@@ -1,0 +1,28 @@
+name: Test Compiling Meaningful
+on:
+  push:
+    branches: [ main ]
+jobs:
+  compile:
+    runs-on: windows-2022
+    steps:
+      - name: Download code
+        uses: actions/checkout@v4
+
+      - name: Add GCC to PATH
+        run: echo "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: pwsh
+
+      - name: Build object files
+        run: |
+          gcc -c lexer.c -o lexer.o
+          gcc -c parser.c -o parser.o
+
+      - name: Build static libraries
+        run: |
+          ar rcs lexer.a lexer.o
+          ar rcs parser.a parser.o
+
+      - name: Build interpreter
+        run: |
+          gcc interpreter.c lexer.a parser.a -o meaningful.exe -static
