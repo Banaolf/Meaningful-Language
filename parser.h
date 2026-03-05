@@ -25,7 +25,11 @@ typedef enum {
     NODE_INDEX_ACCESS,
     NODE_MEMBER_ACCESS,
     NODE_METHOD_CALL,
-    NODE_REPEAT
+    NODE_REPEAT,
+    NODE_LOGIC,
+    NODE_UNARY,
+    NODE_NON,
+    NODE_COMPARRISON
 } NodeType;
 
 typedef struct ASTNode {

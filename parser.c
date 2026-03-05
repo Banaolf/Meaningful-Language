@@ -33,6 +33,7 @@ char* tokenTypeToString(TokenType type){
         case TOKEN_COMPOUND_ASSIGN: return "TOKEN_COMPOUND_ASSIGN";
         case TOKEN_DOT: return "TOKEN_DOT";
         case TOKEN_FLOAT: return "TOKEN_FLOAT";
+        case TOKEN_UNARY: return "TOKEN_UNARY";
         case ERR: return "ERR";
         default: return "UNKNOWN";
     }
@@ -47,6 +48,10 @@ const char* keywords[] = {
     "Import",
     "break",
     "repeat",
+    "and",
+    "or",
+    "equalto",
+    "isnt",
     NULL
 };
 
@@ -142,7 +147,7 @@ void addChild(ASTNode* parent, ASTNode* child) {
 //PARSERS---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Parse expression
-ASTNode* parseExpression(); 
+ASTNode* parseExpression();
 // Parse statement
 ASTNode* parseStatement(); 
 
@@ -284,10 +289,17 @@ ASTNode* parsePrimaryExpression() {
         node->right = zero;
         return node;
     }
+
     if (is(TOKEN_NUMBER, 0)) {
         Token t = peek(0);
         advance();
         return createNode(NODE_NUMBER, t.value);
+    }
+
+    if (is(TOKEN_NON, 0)) {
+        Token t = peek(0);
+        advance();
+        return createNode(NODE_NON, t.value);
     }
 
     if (is(TOKEN_FLOAT, 0)) {
@@ -296,7 +308,7 @@ ASTNode* parsePrimaryExpression() {
         return createNode(NODE_FLOAT, t.value);
     }
 
-    if (is(TOKEN_BOOLEAN, 0)) { //So, internally treated as ints.
+    if (is(TOKEN_BOOLEAN, 0)) { 
         Token t = peek(0);
         advance();
         // convert true/false to 1/0
@@ -455,19 +467,20 @@ ASTNode* parseAddSub() {
 ASTNode* parseComparison() {
     ASTNode* left = parseAddSub();
 
-    while (is(TOKEN_COMPARISON, 0)) {
+    while (is(TOKEN_COMPARISON, 0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "equalto")==0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "not")==0)) {
         if (parserError) break;
         const char* v = peek(0).value;
         if (strcmp(v, "<")  != 0 && strcmp(v, ">")  != 0 &&
             strcmp(v, "<=") != 0 && strcmp(v, ">=") != 0 &&
-            strcmp(v, "==") != 0 && strcmp(v, "!=") != 0) {
+            strcmp(v, "==") != 0 && strcmp(v, "!=") != 0 &&
+            strcmp(v, "equalto") != 0 && strcmp(v, "isnt") != 0) {
             break;
         }
         Token op = peek(0);
         advance();
         ASTNode* right = parseAddSub();
         
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        ASTNode* node = createNode(NODE_COMPARRISON, op.value);
         node->left = left;
         node->right = right;
         left = node;
@@ -478,13 +491,13 @@ ASTNode* parseComparison() {
 ASTNode* parseLogic() {
     ASTNode* left = parseComparison();
 
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "and") == 0 || strcmp(peek(0).value, "or") == 0)) {
+    while (is(TOKEN_KEYWORD, 0) && (strcmp(peek(0).value, "and") == 0 || strcmp(peek(0).value, "or") == 0)) {
         if (parserError) break;
         Token op = peek(0);
         advance();
         ASTNode* right = parseComparison();
         
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        ASTNode* node = createNode(NODE_LOGIC, op.value);
         node->left = left;
         node->right = right;
         left = node;

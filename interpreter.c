@@ -12,7 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.48.1"
+#define VERSION "ALPHA.0.99.49.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -28,7 +28,8 @@ typedef enum {
     VAL_OBJECT,
     VAL_FLOAT,
     VAL_RETURN,
-    VAL_BREAK
+    VAL_BREAK,
+    VAL_NON
 } ValueType;
 
 typedef enum {
@@ -44,6 +45,26 @@ struct Object {
     struct Object* next; // Intrusive list to track all allocations
 };
 
+typedef struct ObjString {
+    Object obj;
+    size_t length;
+    char chars[];
+} ObjString;
+
+//Helpful macros :)
+#define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
+#define AS_OBJECT(value)    ((value).as.obj)
+#define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
+
+#define IS_STRING(value)    (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_STRING)
+#define IS_LIST(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_LIST)
+#define IS_DICT(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_DICT)
+
+#define AS_STRING(value)    ((ObjString*)AS_OBJECT(value))
+#define AS_CSTRING(value)   (AS_STRING(value)->chars)
+#define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
+#define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
+
 // The language's core Value type. Can be a number or a pointer to an Object.
 struct Value {
     ValueType type;
@@ -54,25 +75,6 @@ struct Value {
         float decimal;
     } as;
 };
-
-#define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
-#define AS_OBJECT(value)    ((value).as.obj)
-#define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
-
-#define IS_STRING(value)    (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_STRING)
-#define IS_LIST(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_LIST)
-#define IS_DICT(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_DICT)
-
-typedef struct ObjString {
-    Object obj;
-    size_t length;
-    char chars[];
-} ObjString;
-
-#define AS_STRING(value)    ((ObjString*)AS_OBJECT(value))
-#define AS_CSTRING(value)   (AS_STRING(value)->chars)
-#define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
-#define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
 
 typedef struct ValueList {
     Object obj;
@@ -291,6 +293,14 @@ void defineNative(const char* name, NativeFn func) {
     HASH_ADD_STR(currentScope->symbols, name, sym);
 }
 
+bool is_falsy(Value val) {
+    return ( //Made easy to edit for the future
+        (val.type == VAL_INT && val.as.number == 0) || 
+        (IS_STRING(val) && AS_STRING(val)-> length == 0) || 
+        val.type == VAL_NON || 
+        (val.type == VAL_FLOAT && val.as.decimal == 0.0f));
+}
+
 // Helper: Retrieve a callable symbol (user or native function)
 Symbol* getCallable(char* name) {
     Scope* scope = currentScope;
@@ -418,7 +428,7 @@ void collectGarbage() {
 
 void printValueRecursive(Value val) {
     if (val.type == VAL_INT) printf("%d", val.as.number);
-    else if (val.type == VAL_VOID) printf("non");
+    else if (val.type == VAL_NON) printf("non");
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_STRING(val)) printf("%s", AS_CSTRING(val));
     else if (IS_LIST(val)) {
@@ -446,13 +456,8 @@ void printValueRecursive(Value val) {
 }
 
 void printValue(Value val) {
-    if (val.type == VAL_ERR) {
-        // Errors are already printed when they occur
-        return;
-    }
-    if (val.type == VAL_VOID) { // Don't print anything for void
-        return;
-    }
+    if (val.type == VAL_ERR) {return;}
+    if (val.type == VAL_VOID) {return;}
     printValueRecursive(val);
     printf("\n");
     fflush(stdout);
@@ -475,6 +480,9 @@ Value evaluate(ASTNode* node) {
     }
     if (node->type == NODE_STRING) {
         return make(VAL_OBJECT, (Object*)allocateString(node->value, strlen(node->value)));
+    }
+    if (node->type == NODE_NON) {
+        return make(VAL_NON);
     }
     
     // 2. Variables
@@ -553,20 +561,42 @@ Value evaluate(ASTNode* node) {
                 return make(VAL_FLOAT, result);
             }
         }
+    }
 
-        // Logic & Comparison
-        if (strcmp(node->value, "and") == 0) return make(VAL_INT, left.as.number && right.as.number);
-        if (strcmp(node->value, "or") == 0)  return make(VAL_INT, left.as.number || right.as.number);
+    if (node->type == NODE_COMPARRISON) {
+        Value left = evaluate(node->left);
+        if (left.type == VAL_ERR) return left;
         
-        if (strcmp(node->value, "==") == 0) {
+        Value right = evaluate(node->right);
+        if (right.type == VAL_ERR) return right;
+
+        if (strcmp(node->value, "==") == 0 || strcmp(node->value, "equalto") == 0) {
             if (IS_STRING(left) && IS_STRING(right)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
             return make(VAL_INT, left.as.number == right.as.number);
         }
-        if (strcmp(node->value, "!=") == 0) return make(VAL_INT, left.as.number != right.as.number);
+        if (strcmp(node->value, "!=") == 0 || strcmp(node->value, "isnt") == 0) return make(VAL_INT, left.as.number != right.as.number);
         if (strcmp(node->value, "<")  == 0) return make(VAL_INT, left.as.number < right.as.number);
         if (strcmp(node->value, ">")  == 0) return make(VAL_INT, left.as.number > right.as.number);
         if (strcmp(node->value, "<=") == 0) return make(VAL_INT, left.as.number <= right.as.number);
         if (strcmp(node->value, ">=") == 0) return make(VAL_INT, left.as.number >= right.as.number);
+    }
+
+    if (node->type == NODE_LOGIC){
+        Value left = evaluate(node->left);
+        if (left.type == VAL_ERR) return left;
+        
+        Value right = evaluate(node->right);
+        if (right.type == VAL_ERR) return right;
+
+        if (strcmp(node->value, "and") == 0) return make(VAL_INT, left.as.number && right.as.number); //this does need to be turned into an int since we are just comparing.
+        if (strcmp(node->value, "or") == 0)  return make(VAL_INT, left.as.number || right.as.number);
+    }
+
+    if (node->type == NODE_UNARY) {
+        Value operand = evaluate(node->right);
+        if (operand.type == VAL_ERR) return operand;
+        if (is_falsy(operand)) return make(VAL_INT, 1);
+        return make(VAL_INT, 0);
     }
 
     // 4. Assignments
@@ -740,7 +770,6 @@ Value evaluate(ASTNode* node) {
                 result = make(VAL_INT, strstr(str, AS_CSTRING(argValues[0])) != NULL ? 1 : 0);
 
             } else if (strcmp(method, "slice") == 0) {
-                // str.slice(start, end) — end exclusive, like Python str[start:end]
                 if (argCount != 2 || argValues[0].type != VAL_INT || argValues[1].type != VAL_INT) { free(argValues); return throwException(ArgumentException, "ArgumentException: slice() takes 2 integer arguments.\n"); }
                 int start = argValues[0].as.number;
                 int end   = argValues[1].as.number;
@@ -751,7 +780,15 @@ Value evaluate(ASTNode* node) {
                     result = make(VAL_OBJECT, (Object*)allocateString(str + start, end - start));
                 }
 
-            } else {
+            } else if (strcmp(method, "isDigit")==0) {
+                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isdigit() takes 0 arguments.\n");
+                if (len < 0) return make(VAL_INT, 0);
+                for (int i = 0; i < len; i++) {
+                    if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
+                }
+                result = make(VAL_INT, 1);
+                free(argValues);
+            }else {
                 free(argValues);
                 return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: String has no method '%s'.\n", method);
             }
@@ -922,11 +959,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_IF) {
         Value cond = evaluate(node->children[0]);
         if (cond.type == VAL_ERR) return cond;
-        int isTrue = 0;
-        if (cond.type == VAL_INT) isTrue = cond.as.number != 0;
-        if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0;
-
-        if (isTrue) {
+        if (!is_falsy(cond)) {
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         }
@@ -935,14 +968,9 @@ Value evaluate(ASTNode* node) {
 
     // 10. While Loops
     if (node->type == NODE_WHILE) {
-        while (true) {
-            Value cond = evaluate(node->children[0]);
-            if (cond.type == VAL_ERR) return cond;
-            int isTrue = 0;
-            if (cond.type == VAL_INT) isTrue = cond.as.number != 0;
-            if (IS_STRING(cond)) isTrue = AS_STRING(cond)->length > 0;
-
-            if (!isTrue) break;
+        Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
+        while (is_falsy(cond)) {
+            if (is_falsy(cond)) break;
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
@@ -1044,25 +1072,12 @@ Value native_length(int argc, Value* args) {
     return throwException(TypeException, "TypeException: Length needs a valid type.\n");
 }
 
-Value native_isdigit(int argc, Value* args) {
-    if (argc != 1) return throwException(ArgumentException, "ArgumentException: isdigit() takes 1 argument.\n");
-    Value val = args[0];
-    if (!IS_STRING(val)) return throwException(TypeException, "TypeException: isdigit() takes a string argument.\n");
-    if (AS_STRING(val)->length < 1) return make(VAL_INT, 0);
-    char* str = AS_CSTRING(val);
-    for (int i = 0; str[i]; i++) {
-        if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
-    }
-    return make(VAL_INT, 1);
-}
-
 // --- Initialization ---
 
 void initNatives() {
     defineNative("input", native_input);
     defineNative("clock", native_clock);
     defineNative("length", native_length);
-    defineNative("sIsDigit", native_isdigit);
 }
 
 void initSymbolTable() {
@@ -1180,8 +1195,8 @@ int main(int argc, char *argv[]) {
         }
         finalCleanup(stream);
         free(src);
-        returningVal = 0; //same thing as using the goto
-    }
+        returningVal = 0; 
+    }//same thing as using the goto
     end_of_interpreter: //Added just for -t
     freeSymbolTable();
     collectGarbage();
