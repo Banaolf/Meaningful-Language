@@ -588,8 +588,8 @@ Value evaluate(ASTNode* node) {
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
-        if (strcmp(node->value, "and") == 0) return make(VAL_INT, left.as.number && right.as.number); //this does need to be turned into an int since we are just comparing.
-        if (strcmp(node->value, "or") == 0)  return make(VAL_INT, left.as.number || right.as.number);
+        if (strcmp(node->value, "and") == 0) return make(VAL_INT, !is_falsy(left) && !is_falsy(right));
+        if (strcmp(node->value, "or") == 0)  return make(VAL_INT, !is_falsy(left) || !is_falsy(right));
     }
 
     if (node->type == NODE_UNARY) {
