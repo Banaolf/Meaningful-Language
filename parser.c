@@ -50,7 +50,7 @@ const char* keywords[] = {
     "repeat",
     "and",
     "or",
-    "equalto",
+    "equals",
     "isnt",
     NULL
 };
@@ -467,13 +467,13 @@ ASTNode* parseAddSub() {
 ASTNode* parseComparison() {
     ASTNode* left = parseAddSub();
 
-    while (is(TOKEN_COMPARISON, 0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "equalto")==0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "not")==0)) {
+    while (is(TOKEN_COMPARISON, 0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "equals")==0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "not")==0)) {
         if (parserError) break;
         const char* v = peek(0).value;
         if (strcmp(v, "<")  != 0 && strcmp(v, ">")  != 0 &&
             strcmp(v, "<=") != 0 && strcmp(v, ">=") != 0 &&
             strcmp(v, "==") != 0 && strcmp(v, "!=") != 0 &&
-            strcmp(v, "equalto") != 0 && strcmp(v, "isnt") != 0) {
+            strcmp(v, "equals") != 0 && strcmp(v, "isnt") != 0) {
             break;
         }
         Token op = peek(0);

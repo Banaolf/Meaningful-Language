@@ -570,7 +570,7 @@ Value evaluate(ASTNode* node) {
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
-        if (strcmp(node->value, "==") == 0 || strcmp(node->value, "equalto") == 0) {
+        if (strcmp(node->value, "==") == 0 || strcmp(node->value, "equals") == 0) {
             if (IS_STRING(left) && IS_STRING(right)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
             return make(VAL_INT, left.as.number == right.as.number);
         }
