@@ -1,0 +1,29 @@
+name: Test Compiling Meaningful
+on:
+  push:
+    branches: [ main ]
+jobs:
+  compile:
+    runs-on: windows-2022
+    steps:
+      - name: Download code
+        uses: actions/checkout@v4
+
+      - name: Install GCC
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+
+      - name: Build object files
+        run: |
+          gcc -c lexer.c -o lexer.o
+          gcc -c parser.c -o parser.o
+
+      - name: Build static libraries
+        run: |
+          ar rcs lexer.a lexer.o
+          ar rcs parser.a parser.o
+
+      - name: Build interpreter
+        run: |
+          gcc interpreter.c lexer.a parser.a -o meaningful.exe -static
