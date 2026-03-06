@@ -223,7 +223,7 @@ TokenStream* lex(char* source) {
             continue;
         }
 
-        if (strchr("-", *c) && strchr("/", *c)){
+        if (strchr("-", *c) && strchr("/", *(c+1))){
             addToken(stream, TOKEN_OPERATOR, "-/");
             c += 2;
             continue;

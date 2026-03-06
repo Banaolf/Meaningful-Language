@@ -969,8 +969,8 @@ Value evaluate(ASTNode* node) {
     // 10. While Loops
     if (node->type == NODE_WHILE) {
         Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
-        while (is_falsy(cond)) {
-            if (is_falsy(cond)) break;
+        while (!is_falsy(cond)) {
+            if (!is_falsy(cond)) break;
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
@@ -1072,12 +1072,39 @@ Value native_length(int argc, Value* args) {
     return throwException(TypeException, "TypeException: Length needs a valid type.\n");
 }
 
+Value native_none(int argCount, Value* args) {
+    if (argCount == 0) return make(VAL_INT, 0);
+    for (int i = 0; i < argCount; i++) {
+        if (!is_falsy(args[i])) return make(VAL_INT, 0);
+    }
+    return make(VAL_INT, 1);
+}
+
+Value native_all(int argc, Value* args) {
+    if (argc == 0) return make(VAL_INT, 0);
+    for (int i = 0; i < argc; i++) {
+        if (is_falsy(args[i])) return make(VAL_INT, 0);
+    }
+    return make(VAL_INT, 1);
+}
+
+Value native_any(int argc, Value* args) {
+    if (argc == 0) return make(VAL_INT, 0);
+    for (int i = 0; i < argc; i++) {
+        if (!is_falsy(args[i])) return make(VAL_INT, 1);
+    }
+    return make(VAL_INT, 0);
+}
+
 // --- Initialization ---
 
 void initNatives() {
     defineNative("input", native_input);
     defineNative("clock", native_clock);
     defineNative("length", native_length);
+    defineNative("all", native_all);
+    defineNative("any", native_any);
+    defineNative("none", native_none);
 }
 
 void initSymbolTable() {
