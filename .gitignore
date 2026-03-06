@@ -6,9 +6,6 @@
 *.exe
 *.out  
 
-# Language-specific junk
-*.mean
-
 # IDE/Editor junk
 .vscode/    
 .clangd
@@ -16,4 +13,5 @@
 .installer/
 build.cmd
 run_tests.ps1 
+/test
 #Still developing the run_tests!
