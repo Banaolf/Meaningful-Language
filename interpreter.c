@@ -990,6 +990,24 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
+    //9.1 Else statements
+    if (node->type == NODE_ELSE) {
+        if (node->childCount == 2) {
+            Value cond = evaluate(node->children[0]);
+            if (cond.type == VAL_ERR) return cond;
+            if (!is_falsy(cond)) {
+                Value res = evaluate(node->children[1]);
+                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+            }
+            return make(VAL_VOID);
+        } else {
+            Value res = evaluate(node->children[0]);
+            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+            
+            return make(VAL_VOID);
+        }
+    }
+
     // 10. While Loops
     if (node->type == NODE_WHILE) {
         Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
@@ -1041,7 +1059,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_BREAK);
     }
 
-    // 7. Program / Block Execution
+    // 13. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {
@@ -1260,6 +1278,6 @@ General failure: 1
 File not found: 2
 Malformed flags: 3
 Runtime Error: 4
-Parser Error: 5
-Lexer Error 6
+Parser Error: 5 Not being used rn
+Lexer Error 6 Not being used rn
 */

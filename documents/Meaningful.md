@@ -90,13 +90,26 @@ x /= 2
 ## 5. Control Flow
 ### If Statements
 
-Executes a block of code if the condition is true. Note: Currently, there is no else or elif keyword implemented.
+Executes a block of code if the condition is true. 
 
 ```meaningful
 if x > 5
     print "x is greater than 5"
 end
 ```
+
+You can also use the else keyword. It works as an elseif and else.
+
+```meaningful
+if x > 5
+    print "x is greater than 5"
+else all(x > 0, x < 5)
+    print "x is in a range from 1 to 5"
+else
+    print "x is a negative number or 0"
+end
+```
+
 ### While Loops
 
 Repeats a block of code while the condition is true.

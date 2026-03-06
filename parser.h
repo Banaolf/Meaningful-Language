@@ -29,7 +29,8 @@ typedef enum {
     NODE_LOGIC,
     NODE_UNARY,
     NODE_NON,
-    NODE_COMPARRISON
+    NODE_COMPARRISON,
+    NODE_ELSE
 } NodeType;
 
 typedef struct ASTNode {

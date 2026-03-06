@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "lexer.h"
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -52,6 +53,7 @@ const char* keywords[] = {
     "or",
     "equals",
     "isnt",
+    "else",
     NULL
 };
 
@@ -72,27 +74,46 @@ Token peek(int x) {
     if (currentIndex + x < 0) {
         return globalStream->tokens[0];
     }
-
     return globalStream->tokens[currentIndex + x];
 }
 bool is(TokenType checker, int ind) {
     return peek(ind).type == checker;
 }
+
+bool _is(TokenType type, int ind, ...) {
+    va_list list;
+    va_start(list, ind);
+    char* expect;
+    while ((expect = va_arg(list, char*)) != NULL) {
+        if (is(type, ind)) {
+            if (strcmp(expect, peek(ind).value) == 0) {
+                va_end(list);
+                return true;
+            } else break;
+        } else break;
+    }
+    va_end(list);
+    return false;
+}
+
 TokenType get(int ind) {
     return peek(ind).type;
 }
+
 void throwVoid(){
     Token errorToken = peek(0);
     printf("[PARSER]At line %d, character %d: Unexpected token: %s", errorToken.ln, errorToken.character, tokenTypeToString(get(0)));
     parserError = 1;
     exit(1); //Made to avoid endless loops, replacement when available.
 }
+
 void throw(TokenType expected){
     Token errorToken = peek(0);
     fprintf(stderr, "[PARSER]At line %d, character %d: Expected %s, got %s\n", errorToken.ln, errorToken.character, tokenTypeToString(expected), tokenTypeToString(errorToken.type));
     parserError = 1;
     exit(1); //Made to avoid endless loops, replacement when available. (WARNING: THERES MEMORY LEAKS WITH THIS.)
 }
+
 void throwMultiple(int expectedCount, ...){
     TokenType got = get(0);
     va_list args;
@@ -175,14 +196,14 @@ ASTNode* parsePostfixExpression() {
             Token memberToken = peek(0);
             advance(); // Eat the attribute/method name
 
-            if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
+            if (_is(TOKEN_PARENTHESIS, 0, "(", NULL)) {
                 // Method call: obj.method(args...)
                 advance(); // Eat '('
                 ASTNode* callNode = createNode(NODE_METHOD_CALL, memberToken.value);
                 callNode->left = node; // The object being called on
 
                 // Parse arguments
-                if (!is(TOKEN_PARENTHESIS, 0) || strcmp(peek(0).value, ")") != 0) {
+                if (!_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
                     while (true) {
                         ASTNode* arg = parseExpression();
                         if (!arg) { freeAST(callNode); return NULL; }
@@ -195,7 +216,7 @@ ASTNode* parsePostfixExpression() {
                     }
                 }
 
-                if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, ")") == 0) {
+                if (_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
                     advance(); // Eat ')'
                 } else {
                     throw(TOKEN_PARENTHESIS);
@@ -211,7 +232,7 @@ ASTNode* parsePostfixExpression() {
                 node = accessNode;
             }
 
-        } else if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
+        } else if (_is(TOKEN_PARENTHESIS, 0, "(", NULL)) { 
             // Function call
             if (node->type != NODE_VARIABLE) {
                 printf("[PARSER]At line %d, character %d: .\n", peek(0).ln, peek(0).character);
@@ -226,7 +247,7 @@ ASTNode* parsePostfixExpression() {
             free(node);        // free the original NODE_VARIABLE
 
             // Parse arguments
-            if (!is(TOKEN_PARENTHESIS, 0) || strcmp(peek(0).value, ")") != 0) {
+            if (!_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
                 while (true) {
                     ASTNode* arg = parseExpression();
                     if (!arg) { freeAST(callNode); return NULL; }
@@ -239,7 +260,7 @@ ASTNode* parsePostfixExpression() {
                 }
             }
 
-            if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, ")") == 0) {
+            if (_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
                 advance(); // Eat ')'
             } else {
                 throw(TOKEN_PARENTHESIS);
@@ -247,13 +268,13 @@ ASTNode* parsePostfixExpression() {
                 return NULL;
             }
             node = callNode; // The call node is now the primary node
-        } else if (is(TOKEN_SQUARE, 0) && strcmp(peek(0).value, "[") == 0) {
+        } else if (_is(TOKEN_SQUARE, 0, "[", NULL)) {
             // Index access: list[index]
             advance(); // Eat '['
             ASTNode* indexNode = parseExpression();
             if (!indexNode) { freeAST(node); return NULL; }
 
-            if (is(TOKEN_SQUARE, 0) && strcmp(peek(0).value, "]") == 0) {
+            if (_is(TOKEN_SQUARE, 0, "]", NULL)) {
                 advance(); // Eat ']'
             } else {
                 throw(TOKEN_SQUARE); // Expected ']'
@@ -279,7 +300,7 @@ ASTNode* parsePrimaryExpression() {
     }
 
     // Unary not
-    if (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "!") == 0 || strcmp(peek(0).value, "not") == 0)) {
+    if (_is(TOKEN_UNARY, 0, "!", "not", NULL)) {
         advance();
         ASTNode* operand = parsePrimaryExpression();
         if (!operand) return NULL;
@@ -330,11 +351,11 @@ ASTNode* parsePrimaryExpression() {
     }
 
     // List Literal: [ elem1, elem2, ... ]
-    if (is(TOKEN_SQUARE, 0) && strcmp(peek(0).value, "[") == 0) {
+    if (_is(TOKEN_SQUARE, 0, "[", NULL)) {
         advance(); // Eat '['
         ASTNode* listNode = createNode(NODE_LIST_LITERAL, "list");
         
-        if (!is(TOKEN_SQUARE, 0) || strcmp(peek(0).value, "]") != 0) {
+        if (!_is(TOKEN_SQUARE, 0, "]", NULL)) {
             while (true) {
                 ASTNode* elem = parseExpression();
                 if (!elem) { freeAST(listNode); return NULL; }
@@ -347,7 +368,7 @@ ASTNode* parsePrimaryExpression() {
             }
         }
 
-        if (is(TOKEN_SQUARE, 0) && strcmp(peek(0).value, "]") == 0) {
+        if (_is(TOKEN_SQUARE, 0, "]", NULL)) {
             advance(); // Eat ']'
         } else {
             throw(TOKEN_SQUARE); // Expected ']'
@@ -358,11 +379,11 @@ ASTNode* parsePrimaryExpression() {
     }
 
     // Dictionary Literal: { "key": value, ... }
-    if (is(TOKEN_CURLY, 0) && strcmp(peek(0).value, "{") == 0) {
+    if (_is(TOKEN_CURLY, 0, "{", NULL)) {
         advance(); // Eat '{'
         ASTNode* dictNode = createNode(NODE_DICT_LITERAL, "dict");
 
-        if (!is(TOKEN_CURLY, 0) || strcmp(peek(0).value, "}") != 0) {
+        if (!_is(TOKEN_CURLY, 0, "}", NULL)) {
             while(true) {
                 ASTNode* key = parseExpression();
                 if (!key) { freeAST(dictNode); return NULL; }
@@ -388,7 +409,7 @@ ASTNode* parsePrimaryExpression() {
             }
         }
 
-        if (is(TOKEN_CURLY, 0) && strcmp(peek(0).value, "}") == 0) {
+        if (_is(TOKEN_CURLY, 0, "}", NULL)) {
             advance(); // Eat '}'
         } else {
             throw(TOKEN_CURLY);
@@ -398,10 +419,10 @@ ASTNode* parsePrimaryExpression() {
         return dictNode;
     }
 
-    if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, "(") == 0) {
+    if (_is(TOKEN_PARENTHESIS, 0, "(", NULL)) {
         advance();
         ASTNode* node = parseExpression();
-        if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, ")") == 0) {
+        if (_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
             advance();
         } else {
             throw(TOKEN_PARENTHESIS);;
@@ -416,7 +437,7 @@ ASTNode* parsePrimaryExpression() {
 
 ASTNode* parsePower() {
     ASTNode* left = parsePostfixExpression();
-    if (is(TOKEN_OPERATOR, 0) && strcmp(peek(0).value, "**") == 0) {
+    if (_is(TOKEN_OPERATOR, 0, "**", NULL)) {
         Token op = peek(0);
         advance();
         ASTNode* right = parsePower(); // recurse for right-associativity
@@ -431,7 +452,7 @@ ASTNode* parsePower() {
 ASTNode* parseTerm() {
     ASTNode* left = parsePower();
 
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "*") == 0 || strcmp(peek(0).value, "/") == 0 || strcmp(peek(0).value, "//") == 0 ||strcmp(peek(0).value, "%%")==0||strcmp(peek(0).value, "-/")==0)){
+    while (_is(TOKEN_OPERATOR, 0, "/", "*", "//", "-/", "%%", NULL)){
         if (parserError) break; 
         Token op = peek(0);
         advance();
@@ -447,7 +468,7 @@ ASTNode* parseTerm() {
 
 ASTNode* parseAddSub() {
     ASTNode* left = parseTerm();
-    while (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "+") == 0 || strcmp(peek(0).value, "-") == 0)) {
+    while (_is(TOKEN_OPERATOR, 0, "+", "-", NULL)) {
         if (parserError) break;
         Token op = peek(0);
         advance();
@@ -467,7 +488,7 @@ ASTNode* parseAddSub() {
 ASTNode* parseComparison() {
     ASTNode* left = parseAddSub();
 
-    while (is(TOKEN_COMPARISON, 0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "equals")==0) || (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "not")==0)) {
+    while (is(TOKEN_COMPARISON, 0) || _is(TOKEN_KEYWORD, 0, "equals", "isnt", NULL)) {
         if (parserError) break;
         const char* v = peek(0).value;
         if (strcmp(v, "<")  != 0 && strcmp(v, ">")  != 0 &&
@@ -491,7 +512,7 @@ ASTNode* parseComparison() {
 ASTNode* parseLogic() {
     ASTNode* left = parseComparison();
 
-    while (is(TOKEN_KEYWORD, 0) && (strcmp(peek(0).value, "and") == 0 || strcmp(peek(0).value, "or") == 0)) {
+    while (_is(TOKEN_KEYWORD, 0, "and", "or", NULL)) {
         if (parserError) break;
         Token op = peek(0);
         advance();
@@ -514,7 +535,7 @@ ASTNode* parseFunctionDefinition(char* name) {
     ASTNode* funcNode = createNode(NODE_FUNCTION_DEF, name);
     
     // 1. Parse Arguments: (arg1, arg2)
-    if (!is(TOKEN_PARENTHESIS, 0) || strcmp(peek(0).value, ")") != 0) {
+    if (!_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
         while (true) {
             if (parserError) break;
             if (is(TOKEN_IDENTIFIER, 0)) {
@@ -534,7 +555,7 @@ ASTNode* parseFunctionDefinition(char* name) {
         }
     }
 
-    if (is(TOKEN_PARENTHESIS, 0) && strcmp(peek(0).value, ")") == 0) {
+    if (_is(TOKEN_PARENTHESIS, 0, ")", NULL)) {
         advance(); 
     } else {
         throw(TOKEN_PARENTHESIS);
@@ -547,7 +568,7 @@ ASTNode* parseFunctionDefinition(char* name) {
 
     while (!is(TOKEN_EOF, 0)) {
         if (parserError) break;
-        if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "end") == 0) {
+        if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
             advance();
             break;
         }
@@ -578,7 +599,7 @@ ASTNode* copyAST(ASTNode* node) {
 
 ASTNode* parseStatement() {
     // Handle function definitions with 'set'
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "set") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "set", NULL)) {
         if (is(TOKEN_IDENTIFIER, 1) && is(TOKEN_PARENTHESIS, 2)) {
             advance(); // eat set
             Token nameToken = peek(0);
@@ -600,7 +621,7 @@ ASTNode* parseStatement() {
         }
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "return") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "return", NULL)) {
         advance(); // Eat 'return'
         ASTNode* expr = parseExpression();
         ASTNode* node = createNode(NODE_RETURN, "return");
@@ -608,12 +629,12 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "break") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "break", NULL)) {
         advance(); // Eat 'break'
         return createNode(NODE_BREAK, "break");
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "print") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "print", NULL)) {
         advance(); // Eat 'print'
         ASTNode* expr = parseExpression();
         ASTNode* node = createNode(NODE_PRINT, "print");
@@ -621,7 +642,7 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "Import")==0){
+    if (_is(TOKEN_KEYWORD, 0, "Import", NULL)){
         advance(); // Eat 'import'
         ASTNode* expr = parseExpression();
         ASTNode* node = createNode(NODE_IMPORT, "Import");
@@ -629,7 +650,45 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "repeat")== 0){
+    if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
+        advance(); // Eat else
+        if (peek(-1).ln == peek(0).ln) {
+            // else if — condition on same line
+            ASTNode* cond = parseExpression();
+            ASTNode* node = createNode(NODE_ELSE, "else");
+            addChild(node, cond);
+            
+            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
+            addChild(node, body);
+            if (is(TOKEN_SEMICOLON, 0)) advance();
+            while (!is(TOKEN_EOF, 0)) {
+                if (parserError) break;
+                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { parseStatement(); break; }
+                ASTNode* stmt = parseStatement();
+                if (stmt) addChild(body, stmt);
+                else if (!parserError) advance();
+            }
+            return node;
+        } else {
+            ASTNode* node = createNode(NODE_ELSE, "else");
+            
+            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
+            addChild(node, body);
+            if (is(TOKEN_SEMICOLON, 0)) advance();
+            while (!is(TOKEN_EOF, 0)) {
+                if (parserError) break;
+                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { parseStatement(); break; }
+                ASTNode* stmt = parseStatement();
+                if (stmt) addChild(body, stmt);
+                else if (!parserError) advance();
+            }
+            return node;
+        }
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "repeat", NULL)){
         advance();
         ASTNode* times = parseExpression();
         ASTNode* node = createNode(NODE_REPEAT, "repeat");
@@ -639,10 +698,10 @@ ASTNode* parseStatement() {
         if (is(TOKEN_SEMICOLON, 0)) {advance();}
         while (!is(TOKEN_EOF, 0)) {
             if (parserError) break;
-            if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "end") == 0) {
+            if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
                 advance(); // Eat 'end'
                 break;
-            }
+            } 
             ASTNode* stmt = parseStatement();
             if (stmt) {
                 addChild(body, stmt);
@@ -653,7 +712,7 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "if") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "if", NULL)) {
         advance(); // Eat if
         ASTNode* cond = parseExpression();
         ASTNode* node = createNode(NODE_IF, "if");
@@ -664,8 +723,11 @@ ASTNode* parseStatement() {
         if (is(TOKEN_SEMICOLON, 0)){advance();}
         while (!is(TOKEN_EOF, 0)) { //After condition, there should be a newline or a semicolon.
             if (parserError) break;
-            if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "end") == 0) {
+            if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
                 advance(); // Eat 'end'
+                break;
+            } else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
+                parseStatement();
                 break;
             }
             ASTNode* stmt = parseStatement();
@@ -678,7 +740,7 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "while") == 0) {
+    if (_is(TOKEN_KEYWORD, 0, "while", NULL)) {
         advance(); // Eat 'while'
         ASTNode* cond = parseExpression();
         ASTNode* node = createNode(NODE_WHILE, "while");
@@ -690,7 +752,7 @@ ASTNode* parseStatement() {
         if (is(TOKEN_SEMICOLON, 0)) {advance();}
         while (!is(TOKEN_EOF, 0)) {
             if(parserError) break; 
-            if (is(TOKEN_KEYWORD, 0) && strcmp(peek(0).value, "end") == 0) {
+            if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
                 advance(); // Eat 'end'
                 break;
             }
