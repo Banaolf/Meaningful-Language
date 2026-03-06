@@ -279,7 +279,7 @@ ASTNode* parsePrimaryExpression() {
     }
 
     // Unary not
-    if (is(TOKEN_OPERATOR, 0) && strcmp(peek(0).value, "!") == 0) {
+    if (is(TOKEN_OPERATOR, 0) && (strcmp(peek(0).value, "!") == 0 || strcmp(peek(0).value, "not") == 0)) {
         advance();
         ASTNode* operand = parsePrimaryExpression();
         if (!operand) return NULL;

@@ -19,6 +19,7 @@ Flags:
 - -v / --version: Display version info.
 - -src / --source: Open the GitHub repository.
 - -lic / --licence: Open the license file.
+- -t / --test: Test a file. Not done yet, since it does not display the typical helpful info.
 ## 2. Data Types
 Meaningful supports the following core data types:
 
@@ -52,7 +53,6 @@ Variables are dynamically typed. You can define them using the set keyword or vi
 ```meaningful
 set x = 10
 set name = "Meaningful"
-y = 20  :: Implicit assignment is also supported
 ```
 Compound Assignment: 
 
@@ -85,6 +85,7 @@ x /= 2
 - and : Logical AND
 - or : Logical OR
 - ! : Logical NOT (Unary)
+- not : Logical NOT (Unary)
 
 ## 5. Control Flow
 ### If Statements
@@ -109,6 +110,17 @@ end
 ```
 break: Exits the loop immediately.
 
+### Repeat Loops
+
+Repeats a block of code until its count runs out. 
+
+```meaningful
+set i = 49230
+repeat i
+    print i :: NOT printing until 0, printing 49230 49230 times.
+end
+```
+
 ## 6. Functions
 
 Functions are first-class citizens and are defined using the set keyword followed by parentheses.
@@ -131,7 +143,52 @@ print result
 The language comes with built-in native functions:
 
 input(): Reads a line of text from the user (Always returns a string).
+
+```meaningful
+print "Please input a number"
+set inputted = input()
+if !inputted.isDigit()
+  print "I said a number!"
+end
+print "Inputted: " + inputted
+```
+
 clock(): Returns the program execution time in milliseconds.
+
+```meaningful
+print clock() ::Not much to comment 
+```
+
+length(): Returns the length of the object.
+
+```meaningful
+set length = length("hello guys") ::10 in lenfth
+print length ::Will print 10
+```
+
+all(): Returns true if all its arguments are considered true, otherwise false.
+
+```meaningful
+if all(non, 0, "") ::all of this are considered falsy.
+  print "All of these are considered true" ::This will never print
+end
+```
+
+any(): Returns the truthy argument if one of its arguments is considered true, otherwise non. 
+
+```meaningful
+if any(true, "hi", 1) ::All of these are considered truthy
+  print "One of these are considered true."
+end
+```
+
+none(): Returns true if none of its arguments is considered true, otherwise false.
+
+```meaningful
+if none(non, 0, "") ::all of this are considered falsy.
+  print "None of those are considered true"
+end
+```
 
 ## 7. Data Structures
 
@@ -172,7 +229,15 @@ Scope: The language uses block scoping (new scopes are created for functions).
 Truthiness:
 0 and empty strings "" are treated as false.
 All other values are treated as true
-Comments: Double colon. 
+Comments: Double colon. Block Comments: Opener is Colon Semicolon, Closer is Semicolon Colon
 ```
 print "Something" :: <- THIS IS A COMMENT
+:;
+now
+this
+is
+a
+block
+comment
+;:
 ```

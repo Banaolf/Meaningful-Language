@@ -114,6 +114,8 @@ TokenStream* lex(char* source) {
                 addToken(stream, TOKEN_NON, "non");
             } else if (is_digit(buffer) == 0) {
                 addToken(stream, TOKEN_NUMBER, buffer);
+            } else if (strcmp(buffer, "not")) {
+                addToken(stream, TOKEN_UNARY, "not");
             } else {
                 addToken(stream, TOKEN_IDENTIFIER, buffer);
             }
@@ -208,7 +210,7 @@ TokenStream* lex(char* source) {
                 addToken(stream, TOKEN_OPERATOR, "//");
                 c += 2;
                 continue;
-            }
+            } 
             char buffer[2] = {*c, '\0'};
             addToken(stream, TOKEN_OPERATOR, buffer);
             c++;
