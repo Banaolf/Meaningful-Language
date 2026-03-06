@@ -26,3 +26,7 @@ jobs:
       - name: Build interpreter
         run: |
           gcc interpreter.c lexer.a parser.a -o meaningful.exe -static
+
+      - name: Quicktest Interpreter
+        run: |
+          .\meaningful.exe while_test.mean
