@@ -1,0 +1,19 @@
+:: Test: while keyword
+:: Tests basic loop and countdown
+
+set i = 1
+while i <= 3
+    print i
+    i += 1
+end
+
+set x = 10
+while x > 0
+    x -= 3
+end
+print x
+:;
+Testing multi-line commention
+this piece of code shouldnt cause any troubles
+print "hi"
+Should also output [PARSER] WARN: Block comment reaches end of file
