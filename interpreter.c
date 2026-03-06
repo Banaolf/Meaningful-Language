@@ -749,6 +749,38 @@ Value evaluate(ASTNode* node) {
                 if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: length() takes 0 arguments.\n"); }
                 result = make(VAL_INT, (int)len);
 
+            } else if (strcmp(method, "isSpace") == 0){
+                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isSpace() takes 0 arguments.\n");
+                if (len < 0) return make(VAL_INT, 0);
+                for (int i = 0; i < len; i++) {
+                    if (!isspace((unsigned char)str[i])) return make(VAL_INT, 0);
+                }
+                result = make(VAL_INT, 1);
+                free(argValues);
+            } else if (strcmp(method, "isAlphabetical") == 0){
+                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isAlphabetical() takes 0 arguments.\n");
+                if (len < 0) return make(VAL_INT, 0);
+                for (int i = 0; i < len; i++) {
+                    if (!isalpha((unsigned char)str[i])) return make(VAL_INT, 0);
+                }
+                result = make(VAL_INT, 1);
+                free(argValues);
+            } else if (strcmp(method, "isAlphaNumeric") == 0){
+                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isAlphaNumeric() takes 0 arguments.\n");
+                if (len < 0) return make(VAL_INT, 0);
+                for (int i = 0; i < len; i++) {
+                    if (!isalnum((unsigned char)str[i])) return make(VAL_INT, 0);
+                }
+                result = make(VAL_INT, 1);
+                free(argValues);
+            } else if (strcmp(method, "isDigit")==0) {
+                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isDigit() takes 0 arguments.\n");
+                if (len < 0) return make(VAL_INT, 0);
+                for (int i = 0; i < len; i++) {
+                    if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
+                }
+                result = make(VAL_INT, 1);
+                free(argValues);
             } else if (strcmp(method, "upper") == 0) {
                 if (argCount != 0) { free(argValues); return throwException(ArgumentException, "ArgumentException: upper() takes 0 arguments.\n"); }
                 char* buf = malloc(len + 1);
@@ -780,14 +812,6 @@ Value evaluate(ASTNode* node) {
                     result = make(VAL_OBJECT, (Object*)allocateString(str + start, end - start));
                 }
 
-            } else if (strcmp(method, "isDigit")==0) {
-                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isdigit() takes 0 arguments.\n");
-                if (len < 0) return make(VAL_INT, 0);
-                for (int i = 0; i < len; i++) {
-                    if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
-                }
-                result = make(VAL_INT, 1);
-                free(argValues);
             }else {
                 free(argValues);
                 return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: String has no method '%s'.\n", method);
