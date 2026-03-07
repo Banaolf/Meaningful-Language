@@ -13,5 +13,5 @@
 .installer/
 build.cmd
 run_tests.ps1 
-/test
+/scripts
 #Still developing the run_tests!

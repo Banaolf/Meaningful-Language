@@ -30,7 +30,9 @@ typedef enum {
     NODE_UNARY,
     NODE_NON,
     NODE_COMPARRISON,
-    NODE_ELSE
+    NODE_ELSE,
+    NODE_READFILE,
+    NODE_FILE_INTERACTION
 } NodeType;
 
 typedef struct ASTNode {

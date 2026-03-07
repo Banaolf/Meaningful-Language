@@ -12,7 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.49.2"
+#define VERSION "ALPHA.0.99.50.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -35,7 +35,8 @@ typedef enum {
 typedef enum {
     OBJ_STRING,
     OBJ_LIST,
-    OBJ_DICT
+    OBJ_DICT,
+    OBJ_FILE
 } ObjectType;
 
 // The header for all heap-allocated objects in the language
@@ -51,10 +52,19 @@ typedef struct ObjString {
     char chars[];
 } ObjString;
 
+typedef struct ObjFile {
+    Object obj;
+    FILE* file;
+    char* path;
+    char* contents;
+    bool isOpen;
+} ObjFile;
+
 //Helpful macros :)
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
 #define AS_OBJECT(value)    ((value).as.obj)
 #define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
+#define IS_OBJ_TYPE(value, type)  (IS_OBJECT(value) && OBJ_TYPE(value) == type)
 
 #define IS_STRING(value)    (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_STRING)
 #define IS_LIST(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_LIST)
@@ -208,6 +218,9 @@ void markObject(Object* object) {
                 markValue(s->value);
             }
             break;
+        }
+        case OBJ_FILE: {
+            break; // Files don't have outgoing references
         }
     }
 }
@@ -375,6 +388,8 @@ void freeSymbolTable() {
     }
 }
 
+ObjFile* currentFile;
+
 static void freeObject(Object* object) {
     switch (object->type) {
         case OBJ_STRING:
@@ -395,6 +410,21 @@ static void freeObject(Object* object) {
                 free(s);      // Free the DictEntry struct
             }
             free(dict); // Free the dict container
+            break;
+        }
+        case OBJ_FILE: {
+            ObjFile* file = (ObjFile*)object;
+            if (file->isOpen && file->file != NULL) fclose(file->file); file->isOpen = false;
+            file->file = NULL;
+            if (file->path != NULL) {
+                free(file->path);
+                file->path = NULL;
+            }
+            if (file->contents != NULL) { // If the contents are already NULL means it was never assigned meaning no need to free it.
+                free(file->contents);
+                file->contents = NULL;
+            }
+            free(file);
             break;
         }
     }
@@ -875,6 +905,17 @@ Value evaluate(ASTNode* node) {
                 return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Dict has no method '%s'.\n", method);
             }
 
+        } else if (IS_OBJ_TYPE(obj, OBJ_FILE)) {
+            ObjFile* file = (ObjFile*)AS_OBJECT(obj);
+
+            if (strcmp(method, "contents") == 0) {
+                if (argCount != 0) free(argValues); return throwException(ArgumentException, "ArgumentException: contents() takes 0 arguments.\n");
+                if (!file->isOpen) free(argValues); return throwException(RuntimeException, "RuntimeException: File has to be open.");
+                result = make(VAL_OBJECT, (Object*)allocateString(file->contents, sizeof(file->contents)));
+            } else if (strcmp(method, "path")==0) {
+                if (argCount != 0) free(argValues); return throwException(ArgumentException, "ArgumentException: path() takes 0 arguments.\n");
+                result = make(VAL_OBJECT, (Object*)allocateString(file->path, sizeof(file->path)));
+            }
         } else {
             free(argValues);
             return throwException(TypeException, "TypeException: Value does not support method calls.\n");
@@ -1013,6 +1054,7 @@ Value evaluate(ASTNode* node) {
         Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
         while (!is_falsy(cond)) {
             Value res = evaluate(node->children[1]);
+            if (is_falsy(cond)) break;
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -1058,7 +1100,73 @@ Value evaluate(ASTNode* node) {
         return make(VAL_BREAK);
     }
 
-    // 13. Program / Block Execution
+    // 13. Readfile (builtin I/O)
+    if (node->type == NODE_READFILE) {
+        Value valPath = evaluate(node->children[0]);
+        if (valPath.type == VAL_ERR) return valPath;
+
+        char* path = NULL;
+        if (IS_STRING(valPath)) {
+            path = AS_CSTRING(valPath);
+        } else if (IS_OBJECT(valPath) && AS_OBJECT(valPath)->type == OBJ_FILE) {
+            ObjFile* existing = (ObjFile*)AS_OBJECT(valPath);
+            path = existing->path;
+        } else {
+            return throwException(TypeException, "TypeException: readfile expects a file or a string (path).\n");
+        } //Meaning accepts both files and paths.
+
+        ObjFile* file = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
+        if (file->file == NULL) file->file = fopen(path, "r+"); //Overwrites.
+        file->path = strdup(path);
+        fseek(file->file, 0L, SEEK_END);
+        size_t size = ftell(file->file);
+        rewind(file->file);
+
+        file->contents = malloc(size + 1);
+        fread(file->contents, sizeof(char), size, file->file);
+        file->contents[size] = '\0';
+        file->isOpen = true;
+
+        if (file->file == NULL) {
+            file->isOpen = false;
+            return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be found or does not exist.\n");
+        }
+        if (node->value && strlen(node->value) > 0) { //suport as name
+            setVariable(node->value, make(VAL_OBJECT, (Object*)file));
+        }
+
+        Value blockResult = evaluate(node->children[1]);
+        if (file->isOpen) {
+            fclose(file->file);
+            file->file = NULL;
+            file->isOpen = false;
+            file->contents = NULL;
+            free(file->contents);
+        }
+        
+        if (blockResult.type == VAL_ERR) return blockResult;
+        return make(VAL_VOID);
+    }  
+
+    // 13.1 File interactions
+
+    if (node->type == NODE_FILE_INTERACTION) {
+        if (strcmp(node->value, "overwrite")==0) {
+            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "File has to be opened to perform this action.\n");
+            Value result = evaluate(node->children[0]);
+            if (result.type == VAL_ERR) return result;
+            char* toOverwrite = AS_CSTRING(result);
+            fprintf(currentFile->file,"%s", toOverwrite);
+        } else if (strcmp(node->value, "put")==0) {
+            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "File has to be opened to perform this action.\n");
+            Value result = evaluate(node->children[0]);
+            if (result.type == VAL_ERR) return result;
+            char* toAppend = AS_CSTRING(result); //Aware that if its not a string it will crash. Fixing next version.
+            fprintf(currentFile->file,"%s%s", (currentFile->contents), toAppend);
+        }
+    }
+
+    // 14. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {
@@ -1230,6 +1338,8 @@ void runREPL() {
 
     freeSymbolTable();
     collectGarbage();
+    currentFile = NULL;
+    free(currentFile);
 }
 
 int main(int argc, char *argv[]) {
@@ -1295,6 +1405,8 @@ int main(int argc, char *argv[]) {
     end_of_interpreter: //Added just for -t
     freeSymbolTable();
     collectGarbage();
+    currentFile = NULL;
+    free(currentFile);
     return returningVal;
 }
 /*

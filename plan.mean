@@ -15,11 +15,6 @@ createfile "C:\Users\User\test.mean" as file :: the as file is not needed. Just 
 readfile file ::Instead of file, it can also be a path. You can also put as file here. 
     write "Hi!" ::Note: OVERWRITES
     put "That is cheese!"
-    if get "That is cheese!" 
-        print "YIPPY!"
-    else
-        print "Not yippy..."
-    end
 end
 unset file ::Removes a variable
 deletefile "C:\Users\User\test.mean" ::Removes a file

@@ -54,6 +54,10 @@ const char* keywords[] = {
     "equals",
     "isnt",
     "else",
+    "readfile",
+    "as",
+    "overwrite",
+    "put",
     NULL
 };
 
@@ -762,6 +766,57 @@ ASTNode* parseStatement() {
             }
         }
         return node;
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "readfile", NULL)) {
+        advance(); // Eat 'readfile'
+        ASTNode* expr = parseExpression();
+        ASTNode* node = createNode(NODE_READFILE, NULL); // NULL until we know the name
+        addChild(node, expr);
+
+        // Handle optional 'as var'
+        if (_is(TOKEN_KEYWORD, 0, "as", NULL)) {
+            advance(); // Eat 'as'
+            if (!is(TOKEN_IDENTIFIER, 0)) {
+                throw(TOKEN_IDENTIFIER);
+                return NULL;
+            }
+            Token nameToken = peek(0);
+            advance(); // Eat the name
+            node->value = strdup(nameToken.value);
+        }
+
+        ASTNode* body = createNode(NODE_PROGRAM, "READFILE_BODY");
+        addChild(node, body);
+        
+        if (is(TOKEN_SEMICOLON, 0)) {advance();}
+        while (!is(TOKEN_EOF, 0)) {
+            if(parserError) break; 
+            if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
+                advance(); // Eat 'end'
+                break;
+            }
+            ASTNode* stmt = parseStatement();
+            if (stmt) {
+                addChild(body, stmt);
+            } else if (!parserError) {
+                advance(); // unstick the parser
+            }
+        }
+
+        return node;
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "overwrite", NULL)) {
+        advance();
+        ASTNode* expr = parseExpression(); //String or anything that can be turned into it.
+        ASTNode* node = createNode(NODE_FILE_INTERACTION, "overwrite");
+        addChild(node, expr);
+    } else if (_is(TOKEN_KEYWORD, 0, "put", NULL)) {
+        advance();
+        ASTNode* expr = parseExpression(); //String or anything that can be turned into it.
+        ASTNode* node = createNode(NODE_FILE_INTERACTION, "put");
+        addChild(node, expr);
     }
 
     // Handle assignments and expression statements
