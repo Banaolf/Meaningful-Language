@@ -5,7 +5,7 @@ AR = ar
 ARFLAGS = rcs
 
 LIB_NAME = libcore.a
-TARGET = meaningful.exe
+TARGET = .\bin\meaningful.exe
 
 # Objetos necesarios
 LIB_OBJS = lexer.o parser.o
@@ -29,7 +29,10 @@ parser.o: parser.c parser.h lexer.h
 interpreter.o: interpreter.c parser.h lexer.h
 	$(CC) $(CFLAGS) -c interpreter.c
 
+#If you install the source code and is using make, please make sure you make the bin folder.
 clean:
-	del -f *.o *.a *.exe #same here
+	cd .\bin
+	del -f *.o *.a *.exe
+	cd ..\
 
 .PHONY: all clean
