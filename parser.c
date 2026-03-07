@@ -81,15 +81,14 @@ bool is(TokenType checker, int ind) {
 }
 
 bool _is(TokenType type, int ind, ...) {
+    if (!is(type, ind)) return false;
     va_list list;
     va_start(list, ind);
     char* expect;
     while ((expect = va_arg(list, char*)) != NULL) {
-        if (is(type, ind)) {
-            if (strcmp(expect, peek(ind).value) == 0) {
-                va_end(list);
-                return true;
-            } else break;
+        if (strcmp(expect, peek(ind).value) == 0) {
+            va_end(list);
+            return true;
         } else break;
     }
     va_end(list);
@@ -111,7 +110,6 @@ void throw(TokenType expected){
     Token errorToken = peek(0);
     fprintf(stderr, "[PARSER]At line %d, character %d: Expected %s, got %s\n", errorToken.ln, errorToken.character, tokenTypeToString(expected), tokenTypeToString(errorToken.type));
     parserError = 1;
-    exit(1); //Made to avoid endless loops, replacement when available. (WARNING: THERES MEMORY LEAKS WITH THIS.)
 }
 
 void throwMultiple(int expectedCount, ...){

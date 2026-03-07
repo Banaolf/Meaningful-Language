@@ -1012,7 +1012,6 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_WHILE) {
         Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
         while (!is_falsy(cond)) {
-            if (!is_falsy(cond)) break;
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
@@ -1179,29 +1178,56 @@ char* readFile(const char* path) {
 
 void runREPL() {
     char line[1024];
+    char source[65536] = {0};
     printf("Meaningful Shell %s\n", VERSION);
     printf("Type 'exit' to quit.\n");
 
     while (1) {
-        printf(">>>");
+        printf(strlen(source) > 0 ? "... " : ">>> ");
         if (!fgets(line, sizeof(line), stdin)) break;
-
         line[strcspn(line, "\n")] = 0;
-
         if (strcmp(line, "exit") == 0) break;
         if (strlen(line) == 0) continue;
 
-        TokenStream* stream = lex(line);
-        ASTNode* root = parseFile(*stream);
+        strcat(source, line);
+        strcat(source, "\n");
 
+        // Count unmatched block openers
+        int depth = 0;
+        TokenStream* probe = lex(source);
+        for (int i = 0; i < probe->size; i++) {
+            Token t = probe->tokens[i];
+            if (t.type != TOKEN_KEYWORD) continue;
+            if (strcmp(t.value, "while")  == 0 ||
+                strcmp(t.value, "if")     == 0 ||
+                strcmp(t.value, "repeat") == 0) {
+                depth++;
+            } else if (strcmp(t.value, "set") == 0) {
+                if (i + 2 < probe->size &&
+                    probe->tokens[i+1].type == TOKEN_IDENTIFIER &&
+                    probe->tokens[i+2].type == TOKEN_PARENTHESIS) {
+                    depth++;
+                }
+            } else if (strcmp(t.value, "end") == 0) {
+                depth--;
+            }
+        }
+        finalCleanup(probe);
+
+        if (depth > 0) continue; // still inside a block, keep reading
+
+        // Ready to evaluate
+        TokenStream* stream = lex(source);
+        ASTNode* root = parseFile(*stream);
         if (root) {
             Value rslt = evaluate(root);
-            if (rslt.type == VAL_ERR) { freeAST(root); finalCleanup(stream); break; }
+            if (rslt.type == VAL_ERR) { freeAST(root); finalCleanup(stream); memset(source, 0, sizeof(source)); continue; }
             freeAST(root);
         }
-
         finalCleanup(stream);
+        memset(source, 0, sizeof(source));
     }
+
     freeSymbolTable();
     collectGarbage();
 }
