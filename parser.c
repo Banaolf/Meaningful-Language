@@ -313,6 +313,27 @@ ASTNode* parsePrimaryExpression() {
         return node;
     }
 
+    if (_is(TOKEN_OPERATOR, 0, "-", NULL)) {
+        advance();
+        ASTNode* operand = parsePrimaryExpression();
+        if (!operand) return NULL;
+        // Desugar to 0 - operand
+        ASTNode* zero = createNode(NODE_NUMBER, "0");
+        ASTNode* node = createNode(NODE_BINARY_OP, "-");
+        node->left = zero;
+        node->right = operand;
+        return node;
+    }
+
+    if (_is(TOKEN_DLRSIGN, 0, "$", NULL)) {
+        advance();
+        ASTNode* cmd = parsePrimaryExpression(); // string
+        if (!cmd) return NULL;
+        ASTNode* node = createNode(NODE_CMD, "$");
+        node->right = cmd;
+        return node;
+    }
+
     if (is(TOKEN_NUMBER, 0)) {
         Token t = peek(0);
         advance();

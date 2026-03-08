@@ -13,7 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.50.1"
+#define VERSION "ALPHA.0.99.51.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -415,7 +415,7 @@ static void freeObject(Object* object) {
         }
         case OBJ_FILE: {
             ObjFile* file = (ObjFile*)object;
-            if (file->isOpen && file->file != NULL) fclose(file->file); file->isOpen = false;
+            if (file->isOpen && file->file != NULL) {fclose(file->file); file->isOpen = false;}
             file->file = NULL;
             if (file->path != NULL) {
                 free(file->path);
@@ -618,7 +618,8 @@ Value evaluate(ASTNode* node) {
         // Float/int arithmetic (promote to float if either side is float)
         if (strcmp(node->value, "+") == 0 || strcmp(node->value, "-") == 0 ||
             strcmp(node->value, "*") == 0 || strcmp(node->value, "/") == 0 ||
-            strcmp(node->value, "//") == 0 || strcmp(node->value, "**") == 0) {
+            strcmp(node->value, "//") == 0 || strcmp(node->value, "**") == 0 ||
+            strcmp(node->value, "%%") == 0 || strcmp(node->value, "-/") == 0 ) {
 
             bool eitherFloat = (left.type == VAL_FLOAT || right.type == VAL_FLOAT);
             float l = left.type == VAL_FLOAT ? left.as.decimal : (float)left.as.number;
@@ -980,16 +981,16 @@ Value evaluate(ASTNode* node) {
                 return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Dict has no method '%s'.\n", method);
             }
 
-        } else if (IS_OBJ_TYPE(obj, OBJ_FILE)) {
+        } else if (IS_OBJ_TYPE(obj, OBJ_FILE)) { // File Methods
             ObjFile* file = (ObjFile*)AS_OBJECT(obj);
 
             if (strcmp(method, "contents") == 0) {
-                if (argCount != 0) free(argValues); return throwException(ArgumentException, "ArgumentException: contents() takes 0 arguments.\n");
-                if (!file->isOpen) free(argValues); return throwException(RuntimeException, "RuntimeException: File has to be open.");
-                result = make(VAL_OBJECT, (Object*)allocateString(file->contents, sizeof(file->contents)));
+                if (argCount != 0) {free(argValues); return throwException(ArgumentException, "ArgumentException: contents() takes 0 arguments.\n");}
+                if (!file->isOpen) {free(argValues); return throwException(RuntimeException, "RuntimeException: File has to be open.");}
+                result = make(VAL_OBJECT, (Object*)allocateString(file->contents, strlen(file->contents)));
             } else if (strcmp(method, "path")==0) {
-                if (argCount != 0) free(argValues); return throwException(ArgumentException, "ArgumentException: path() takes 0 arguments.\n");
-                result = make(VAL_OBJECT, (Object*)allocateString(file->path, sizeof(file->path)));
+                if (argCount != 0) {free(argValues); return throwException(ArgumentException, "ArgumentException: path() takes 0 arguments.\n");}
+                result = make(VAL_OBJECT, (Object*)allocateString(file->path, strlen(file->path)));
             }
         } else {
             free(argValues);
@@ -1126,10 +1127,10 @@ Value evaluate(ASTNode* node) {
 
     // 10. While Loops
     if (node->type == NODE_WHILE) {
-        Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
-        while (!is_falsy(cond)) {
-            Value res = evaluate(node->children[1]);
+        while (true) {
+            Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
             if (is_falsy(cond)) break;
+            Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -1213,43 +1214,58 @@ Value evaluate(ASTNode* node) {
             path = existing->path;
         } else {
             return throwException(TypeException, "TypeException: readfile expects a file or a string (path).\n");
-        } //Meaning accepts both files and paths.
+        }
 
         ObjFile* file = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
-        if (file->file == NULL) file->file = fopen(path, "r+"); //Overwrites.
+        file->file = NULL;
+        file->path = NULL;
+        file->contents = NULL;
+        file->isOpen = false;
+
+        file->file = fopen(path, "r+");
+        if (file->file == NULL) {
+            return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be found or does not exist.\n");
+        }
+
         file->path = strdup(path);
+        file->isOpen = true;
+
+        // Read contents
         fseek(file->file, 0L, SEEK_END);
         size_t size = ftell(file->file);
         rewind(file->file);
-
         file->contents = malloc(size + 1);
         fread(file->contents, sizeof(char), size, file->file);
         file->contents[size] = '\0';
-        file->isOpen = true;
 
-        if (file->file == NULL) {
-            file->isOpen = false;
-            return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be found or does not exist.\n");
-        }
-        if (node->value && strlen(node->value) > 0) { //suport as name
+        // Bind to variable if 'as name' was provided
+        if (node->value && strlen(node->value) > 0) {
             setVariable(node->value, make(VAL_OBJECT, (Object*)file));
         }
 
+        // Set currentFile for file interaction statements inside the block
+        ObjFile* previousFile = currentFile;
+        currentFile = file;
+
         Value blockResult = evaluate(node->children[1]);
-        if (file->isOpen) {
+
+        // Always close on block exit
+        if (file->isOpen && file->file != NULL) {
             fclose(file->file);
             file->file = NULL;
             file->isOpen = false;
-            file->contents = NULL;
-            free(file->contents);
         }
-        
+        free(file->contents);
+        file->contents = NULL;
+
+        // Restore previous file context (supports nesting)
+        currentFile = previousFile;
+
         if (blockResult.type == VAL_ERR) return blockResult;
         return make(VAL_VOID);
-    }  
+    }
 
     // 13.1 File interactions
-
     if (node->type == NODE_FILE_INTERACTION) {
         if (strcmp(node->value, "overwrite") == 0) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
@@ -1270,7 +1286,16 @@ Value evaluate(ASTNode* node) {
         }
     }
 
-    // 14. Program / Block Execution
+    // 14. Command Execution
+    if (node->type == NODE_CMD) {
+        Value cmd = evaluate(node->right);
+        if (cmd.type == VAL_ERR) return cmd;
+        if (!IS_STRING(cmd)) return throwException(TypeException, "TypeException: $ expects a string.\n");
+        int result = system(AS_CSTRING(cmd));
+        return make(VAL_INT, result);
+    }
+
+    // 15. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {
@@ -1499,7 +1524,7 @@ int main(int argc, char *argv[]) {
         ASTNode* root = parseFile(*stream);
         if (root) {
             Value result = evaluate(root);
-            if (result.type == VAL_ERR) returningVal = 4; freeAST(root); finalCleanup(stream); free(src); goto end_of_interpreter;
+            if (result.type == VAL_ERR) {returningVal = 4; freeAST(root); finalCleanup(stream); free(src); goto end_of_interpreter;}
             freeAST(root);
         }
         finalCleanup(stream);

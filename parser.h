@@ -32,7 +32,8 @@ typedef enum {
     NODE_COMPARRISON,
     NODE_ELSE,
     NODE_READFILE,
-    NODE_FILE_INTERACTION
+    NODE_FILE_INTERACTION,
+    NODE_CMD
 } NodeType;
 
 typedef struct ASTNode {

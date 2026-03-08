@@ -23,6 +23,7 @@ typedef enum {
     TOKEN_FLOAT, //3.14
     TOKEN_DOT, //.
     TOKEN_UNARY,
+    TOKEN_DLRSIGN,
     ERR //Mostly for when theres multiple . in float. Maybe other uses in the future
 } TokenType;
 

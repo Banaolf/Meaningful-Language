@@ -101,6 +101,12 @@ TokenStream* lex(char* source) {
             continue;
         }
 
+        if (*c == '$'){
+            addToken(stream, TOKEN_DLRSIGN, "$");
+            c++;
+            continue;
+        }
+
         if (isalnum(*c) || *c == '_' ) {
             char buffer[256] = {0};
             int i = 0;
