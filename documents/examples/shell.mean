@@ -1,0 +1,12 @@
+:;
+In here, theres an example of interacting with the shell.  
+We will just open the github meaningful repo
+;:
+set result = $"start https://github.com/Banaolf/Meaningful-Language" :: the set result is optional. $ followed by a string means executing a command from the shell.
+
+if result isnt 0
+    print "Something went wrong!"
+else
+    print "Opened!"
+end
+::unset result <- This is planned syntax, and wouldn't be needed but would be good practice.

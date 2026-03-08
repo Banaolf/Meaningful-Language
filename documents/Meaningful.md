@@ -172,6 +172,18 @@ repeat 3
 end
 ```
 
+### Running shell commands
+
+Use $ for this task. Like this:
+```meaningful
+$"echo Hi" ::If the command has an error, it will fail silently. A good practice is to do the following:
+
+set v = $"echo Hi" ::Can also wrap it in a set to get the exit code
+if v isnt 0
+  print "Something went wrong"
+end
+```
+
 ---
 
 ## 7. Functions
@@ -257,7 +269,28 @@ Import "math_utils.mean"
 
 ---
 
-## 12. Comments
+## 12. File I/O
+
+### readfile
+
+Use it to open and read files. 
+
+```meaningful
+readfile "C:\\Users\\User\\test.txt" as file ::as file being optional but strongly recommended. Since you need it to actually get the contents of the file.
+  print file.contents()
+  overwrite ""
+end
+```
+
+### File Interactions
+
+| Keyword   | Use               |
+| -----------| -------------------|
+| overwrite | Overwrites a file |
+| put       | Appends to a file.|
+
+---
+## 13. Comments
 
 **Single-line:** `::` — Everything after `::` on the same line is ignored.
 
@@ -276,7 +309,7 @@ It spans multiple lines.
 
 ---
 
-## 13. Syntax Notes
+## 14. Syntax Notes
 
 - **Semicolons** `;` are optional statement terminators.
 - **Booleans** `true` and `false` are stored internally as `1` and `0`.
@@ -285,7 +318,7 @@ It spans multiple lines.
 
 ---
 
-## 14. Exit Codes
+## 15. Exit Codes
 
 | Code | Meaning         |
 | ------| -----------------|

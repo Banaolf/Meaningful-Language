@@ -1,0 +1,26 @@
+:;
+Pretty easy.
+Use set keyword.  
+Like this:
+;:
+
+print "Please input a path. Use \\ for backslashes."; set path = input()
+
+set checkPath(Path)
+    readfile Path 
+        print "Path does exist."
+        return true
+    else ::Note that this is planned syntax and here for the example.
+        print "Path does not exist."
+        return false
+    end
+end
+
+if checkPath(path)
+    print "Path does exist!"
+else
+    print "Path does not exist!"
+end
+:;
+Simple path-checking script.
+Not much (Btw this would warn because commment reaches EOF)

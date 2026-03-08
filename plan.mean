@@ -15,9 +15,13 @@ createfile "C:\Users\User\test.mean" as file :: the as file is not needed. Just 
 readfile file ::Instead of file, it can also be a path. You can also put as file here. 
     write "Hi!" ::Note: OVERWRITES
     put "That is cheese!"
+else as err::Note: PLANED SYNTAX. This gives the err instance.
+    print err.message()
+    print err.type()
+    createfile "C:\\Users\\User\\scripts\\script.mean" ::Note: PLANNED
+    retry ::Note: PLANNED SYNTAX, made specifically for error-catching stuff. retry by default retries this once, but if you give it a number after the call it will retry it that amount of times. Put true to infinitly retry (NOT RECOMMENDED)
 end
 unset file ::Removes a variable
 deletefile "C:\Users\User\test.mean" ::Removes a file
     print "File couldn't be deleted" ::If theres an error in the process, it either throws it or does the following code.
 end
-::A big plan is also to fix Import.  

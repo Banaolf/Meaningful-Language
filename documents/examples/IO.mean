@@ -1,0 +1,18 @@
+:;
+I/O examples
+Just to show off how this works
+;:
+
+::Path is C:\Users\User\scripts\script.mean
+
+set path = "C:\\Users\\User\\scripts\\script.mean"
+readfile path as file 
+    overwrite "::Hello!\n"
+    put "if 1 < 2; print 'Indeed'; else; print 'Nope!'"
+    if !file.contents().contains("::Hello")
+        print "Welp, something did not go as planned."
+    else 
+        print "It did go as planned!"
+    end
+end
+

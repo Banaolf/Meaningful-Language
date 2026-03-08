@@ -1,0 +1,10 @@
+:;
+Repeat is pretty specific
+Since it is pretty hardcody
+Here is an example
+;:
+
+set count = 2*2 ::4
+repeat count :: Will repeat the code inside itself 4 times in this case. An equivalent would be: while count > 0; count -= 1 end
+    print "This should print 4 times!"
+end
