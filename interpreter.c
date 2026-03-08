@@ -2,6 +2,7 @@
 #include "lexer.h"
 #include <ctype.h>
 #include <stddef.h>
+#include <io.h>
 #include <stddef.h>
 #include <stdarg.h>
 
@@ -495,6 +496,80 @@ void printValue(Value val) {
 
 // Forward declaration
 char* readFile(const char* path);
+
+char* valueToString(Value val) {
+    char tmp[64];
+    if (IS_STRING(val)) {
+        return strdup(AS_CSTRING(val));
+    } else if (val.type == VAL_INT) {
+        snprintf(tmp, sizeof(tmp), "%d", val.as.number);
+        return strdup(tmp);
+    } else if (val.type == VAL_FLOAT) {
+        snprintf(tmp, sizeof(tmp), "%g", val.as.decimal);
+        return strdup(tmp);
+    } else if (val.type == VAL_NON || val.type == VAL_VOID) {
+        return strdup("non");
+    } else if (IS_LIST(val)) {
+        ValueList* list = AS_LIST(val);
+        size_t cap = 64;
+        size_t len = 0;
+        char* buf = malloc(cap);
+        buf[len++] = '[';
+        buf[len] = '\0';
+        for (int i = 0; i < list->count; i++) {
+            char* item = valueToString(list->items[i]);
+            size_t itemLen = strlen(item);
+            while (len + itemLen + 4 > cap) { cap *= 2; buf = realloc(buf, cap); }
+            memcpy(buf + len, item, itemLen);
+            len += itemLen;
+            free(item);
+            if (i < list->count - 1) { buf[len++] = ','; buf[len++] = ' '; }
+        }
+        buf[len++] = ']';
+        buf[len] = '\0';
+        return buf;
+    } else if (IS_DICT(val)) {
+        ValueDict* dict = AS_DICT(val);
+        size_t cap = 64;
+        size_t len = 0;
+        char* buf = malloc(cap);
+        buf[len++] = '{';
+        buf[len] = '\0';
+        DictEntry *s, *tmp2;
+        int i = 0, count = HASH_COUNT(dict->head);
+        HASH_ITER(hh, dict->head, s, tmp2) {
+            // Key
+            size_t keyLen = strlen(s->key);
+            while (len + keyLen + 6 > cap) { cap *= 2; buf = realloc(buf, cap); }
+            buf[len++] = '"';
+            memcpy(buf + len, s->key, keyLen);
+            len += keyLen;
+            buf[len++] = '"';
+            buf[len++] = ':'; buf[len++] = ' ';
+            buf[len] = '\0';
+            // Value
+            char* valStr = valueToString(s->value);
+            size_t valLen = strlen(valStr);
+            while (len + valLen + 4 > cap) { cap *= 2; buf = realloc(buf, cap); }
+            memcpy(buf + len, valStr, valLen);
+            len += valLen;
+            free(valStr);
+            if (i < count - 1) { buf[len++] = ','; buf[len++] = ' '; }
+            i++;
+        }
+        buf[len++] = '}';
+        buf[len] = '\0';
+        return buf;
+    }
+    return strdup("<unknown>");
+}
+
+Value toString(Value val) {
+    char* str = valueToString(val);
+    Value result = make(VAL_OBJECT, (Object*)allocateString(str, strlen(str)));
+    free(str);
+    return result;
+}
 
 // --- Evaluator ---
 
@@ -1080,18 +1155,43 @@ Value evaluate(ASTNode* node) {
     // 11. Import
     if (node->type == NODE_IMPORT) {
         Value pathVal = evaluate(node->right);
+        if (pathVal.type == VAL_ERR) return pathVal;
         if (!IS_STRING(pathVal)) return throwException(TypeException, "TypeException: Import path must be a string.\n");
-        char* source = readFile(AS_CSTRING(pathVal));
-        if (strcmp(source, "") == 0) return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be found or does not exist.");
+
+        char* importPath = AS_CSTRING(pathVal);
+        char* source = "";
+
+        // 1. Try the path as-is first (relative or absolute)
+        source = readFile(importPath);
+
+        // 2. If not found, try the lib folder relative to the executable
+        if (strcmp(source, "") == 0) {
+            char libPath[512];
+            snprintf(libPath, sizeof(libPath), "lib/%s", importPath);
+            source = readFile(libPath);
+        }
+
+        // 3. Still not found
+        if (strcmp(source, "")==0) {
+            return throwException(FileNotFoundException, 
+                "FileNotFoundException: Could not find '%s' or 'lib/%s'.\n", 
+                importPath, importPath);
+        }
+
         TokenStream* Stream = lex(source);
         ASTNode* Root = parseFile(*Stream);
+        free(source); // Free here so it's always freed regardless of parse result
+
         if (Root) {
             Value Result = evaluate(Root);
             freeAST(Root);
+            finalCleanup(Stream);
             if (Result.type == VAL_ERR) return Result;
+        } else {
+            finalCleanup(Stream);
+            return throwException(RuntimeException, "RuntimeException: Failed to parse '%s'.\n", importPath);
         }
-        finalCleanup(Stream);
-        free(source);
+
         return make(VAL_VOID);
     }
 
@@ -1151,18 +1251,22 @@ Value evaluate(ASTNode* node) {
     // 13.1 File interactions
 
     if (node->type == NODE_FILE_INTERACTION) {
-        if (strcmp(node->value, "overwrite")==0) {
-            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "File has to be opened to perform this action.\n");
+        if (strcmp(node->value, "overwrite") == 0) {
+            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
             Value result = evaluate(node->children[0]);
             if (result.type == VAL_ERR) return result;
-            char* toOverwrite = AS_CSTRING(result);
-            fprintf(currentFile->file,"%s", toOverwrite);
-        } else if (strcmp(node->value, "put")==0) {
-            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "File has to be opened to perform this action.\n");
+            if (!IS_STRING(result)) return throwException(TypeException, "TypeException: overwrite expects a string.\n");
+            rewind(currentFile->file);
+            _chsize(fileno(currentFile->file), 0); // Clear the file (WINDOWS ONLY)
+            fprintf(currentFile->file, "%s", AS_CSTRING(result));
+
+        } else if (strcmp(node->value, "put") == 0) {
+            if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
             Value result = evaluate(node->children[0]);
             if (result.type == VAL_ERR) return result;
-            char* toAppend = AS_CSTRING(result); //Aware that if its not a string it will crash. Fixing next version.
-            fprintf(currentFile->file,"%s%s", (currentFile->contents), toAppend);
+            if (!IS_STRING(result)) return throwException(TypeException, "TypeException: put expects a string.\n");
+            fseek(currentFile->file, 0, SEEK_END); // Make sure we're at the end
+            fprintf(currentFile->file, "%s", AS_CSTRING(result));
         }
     }
 
