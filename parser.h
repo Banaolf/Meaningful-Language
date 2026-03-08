@@ -7,8 +7,8 @@ extern const char* keywords[];
 typedef enum {
     NODE_NUMBER,
     NODE_VARIABLE,
-    NODE_BINARY_OP, // For +, -, *, /
-    NODE_ASSIGNMENT, // For SET
+    NODE_BINARY_OP,
+    NODE_ASSIGNMENT,
     NODE_FUNCTION_DEF,
     NODE_FUNCTION_CALL,
     NODE_PROGRAM,
