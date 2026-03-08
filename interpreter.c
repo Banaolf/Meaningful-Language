@@ -79,6 +79,7 @@ typedef struct ObjFile {
 // The language's core Value type. Can be a number or a pointer to an Object.
 struct Value {
     ValueType type;
+    ValueType returnType;
     union {
         int number;
         Object* obj;
@@ -787,27 +788,22 @@ Value evaluate(ASTNode* node) {
         if (!callable) {
             return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Function '%s' not defined.\n", node->value);
         }
-
         Value result = make(VAL_VOID);
         int argCount = node->childCount;
-
         Value* argValues = malloc(sizeof(Value) * (argCount > 0 ? argCount : 1));
         for (int i = 0; i < argCount; i++) {
             argValues[i] = evaluate(node->children[i]);
             if (argValues[i].type == VAL_ERR) { free(argValues); return argValues[i]; }
         }
-
         if (callable->nativeFunc) {
             result = callable->nativeFunc(argCount, argValues);
         } else {
             ASTNode* funcDef = callable->funcNode;
             int paramCount = funcDef->childCount - 1;
-
             if (paramCount != argCount) {
                 result = throwException(ArgumentException, "ArgumentException: Function '%s' expected %d arguments but got %d.\n", funcDef->value, paramCount, argCount);
                 goto end_call;
             }
-
             enterScope();
             for (int i = 0; i < paramCount; i++) {
                 defineVariable(funcDef->children[i]->value, argValues[i]);
@@ -817,21 +813,25 @@ Value evaluate(ASTNode* node) {
                 for (int i = 0; i < body->childCount; i++) {
                     ASTNode* stmt = body->children[i];
                     if (stmt->type == NODE_RETURN) {
-                        result = make(VAL_RETURN, evaluate(stmt->right));
+                        Value inner = evaluate(stmt->right);
+                        result = make(VAL_RETURN, inner);
+                        result.returnType = inner.type;
                         goto end_call_user;
                     }
                     Value stmtVal = evaluate(stmt);
                     if (stmtVal.type == VAL_ERR) { result = stmtVal; goto end_call_user; }
                 }
             }
-            end_call_user: exitScope();
+            end_call_user: 
+                exitScope();
+                if (result.type == VAL_RETURN) result.type = result.returnType;
         }
-        end_call: free(argValues);
-        return result;
+        end_call: 
+            free(argValues);
+            return result;
     }
 
-    // 6b. Method Calls: obj.method(args...)
-    // NODE_METHOD_CALL: value = method name, left = object, children = args
+    // 6b. Method Calls
     if (node->type == NODE_METHOD_CALL) {
         Value obj = evaluate(node->left);
         if (obj.type == VAL_ERR) return obj;

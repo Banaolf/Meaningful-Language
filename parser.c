@@ -46,6 +46,7 @@ const char* keywords[] = {
     "if",
     "while",
     "end", 
+    "return",
     "Import",
     "break",
     "repeat",
