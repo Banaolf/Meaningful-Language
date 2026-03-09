@@ -1,21 +1,12 @@
 :;
 This is meant to be a plan for syntax. Does not mean it works right now.
 ;:
-if all(1, 0)
-    print "all"
-else any(1, 0) ::Behaves as elseif if given a condition.
-    print "any"
-else none(1, 0)
-    print "none"
-else
-    print "How did we get here?"
-end
 
 createfile "C:\Users\User\test.mean" as file :: the as file is not needed. Just if you want the variable there
 readfile file ::Instead of file, it can also be a path. You can also put as file here. 
-    write "Hi!" ::Note: OVERWRITES
+    overwrite "Hi!" ::Note: OVERWRITES
     put "That is cheese!"
-else as err::Note: PLANED SYNTAX. This gives the err instance.
+else as err::Note: PLANED SYNTAX. This gives the err instance. Specific syntax for catching errors may change.
     print err.message()
     print err.type()
     createfile "C:\\Users\\User\\scripts\\script.mean" ::Note: PLANNED

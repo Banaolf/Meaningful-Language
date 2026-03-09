@@ -8,4 +8,4 @@ while count < 10
     print count
     count -= 1
 end
-::Also, while is the for loop until there is one.
+:;Also, while is the for loop until there is one.;:

@@ -7,7 +7,7 @@ extern const char* keywords[];
 typedef enum {
     NODE_NUMBER,
     NODE_VARIABLE,
-    NODE_BINARY_OP,
+    NODE_OPERATOR,
     NODE_ASSIGNMENT,
     NODE_FUNCTION_DEF,
     NODE_FUNCTION_CALL,
@@ -33,12 +33,15 @@ typedef enum {
     NODE_ELSE,
     NODE_READFILE,
     NODE_FILE_INTERACTION,
-    NODE_CMD
+    NODE_CMD,
+    NODE_AT
 } NodeType;
 
 typedef struct ASTNode {
     NodeType type;
     char* value;
+    char* type_notation;
+    char* type_condition;
     struct ASTNode* left;
     struct ASTNode* right;
     struct ASTNode** children; 

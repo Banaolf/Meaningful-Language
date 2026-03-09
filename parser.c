@@ -94,7 +94,7 @@ bool _is(TokenType type, int ind, ...) {
         if (strcmp(expect, peek(ind).value) == 0) {
             va_end(list);
             return true;
-        } else break;
+        }
     }
     va_end(list);
     return false;
@@ -139,6 +139,8 @@ void advance() {
 ASTNode* createNode(NodeType type, char* value) {
     ASTNode* node = malloc(sizeof(ASTNode));
     node->type = type;
+    node->type_notation = NULL;
+    node->type_condition = NULL;
     node->value = value ? strdup(value) : NULL;
     node->left = NULL;
     node->right = NULL;
@@ -308,7 +310,7 @@ ASTNode* parsePrimaryExpression() {
         ASTNode* operand = parsePrimaryExpression();
         if (!operand) return NULL;
         ASTNode* zero = createNode(NODE_NUMBER, "0");
-        ASTNode* node = createNode(NODE_BINARY_OP, "==");
+        ASTNode* node = createNode(NODE_OPERATOR, "==");
         node->left = operand;
         node->right = zero;
         return node;
@@ -320,7 +322,7 @@ ASTNode* parsePrimaryExpression() {
         if (!operand) return NULL;
         // Desugar to 0 - operand
         ASTNode* zero = createNode(NODE_NUMBER, "0");
-        ASTNode* node = createNode(NODE_BINARY_OP, "-");
+        ASTNode* node = createNode(NODE_OPERATOR, "-");
         node->left = zero;
         node->right = operand;
         return node;
@@ -465,7 +467,7 @@ ASTNode* parsePower() {
         Token op = peek(0);
         advance();
         ASTNode* right = parsePower(); // recurse for right-associativity
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        ASTNode* node = createNode(NODE_OPERATOR, op.value);
         node->left = left;
         node->right = right;
         return node;
@@ -482,7 +484,7 @@ ASTNode* parseTerm() {
         advance();
         ASTNode* right = parsePower();
         
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        ASTNode* node = createNode(NODE_OPERATOR, op.value);
         node->left = left;
         node->right = right;
         left = node;
@@ -498,7 +500,7 @@ ASTNode* parseAddSub() {
         advance();
         ASTNode* right = parseTerm();
         
-        ASTNode* node = createNode(NODE_BINARY_OP, op.value);
+        ASTNode* node = createNode(NODE_OPERATOR, op.value);
         node->left = left;
         node->right = right;
         left = node;
@@ -567,6 +569,20 @@ ASTNode* parseFunctionDefinition(char* name) {
                 advance();
                 ASTNode* arg = createNode(NODE_VARIABLE, t.value);
                 addChild(funcNode, arg);
+                if (is(TOKEN_AT, 0)) {
+                    advance();
+                    if (!is(TOKEN_IDENTIFIER, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
+                    Token typeToken = peek(0);
+                    advance();
+                    arg->type_notation = strdup(typeToken.value);
+                    if (is(TOKEN_COLON, 0)) {
+                        advance(); // eat :
+                        if (!is(TOKEN_IDENTIFIER, 0)) { throw(TOKEN_IDENTIFIER); return NULL; }
+                        Token condToken = peek(0);
+                        advance();
+                        arg->type_condition = strdup(condToken.value);
+                    }
+                }
             } else {
                 throw(TOKEN_IDENTIFIER);
             }
@@ -676,8 +692,8 @@ ASTNode* parseStatement() {
 
     if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
         advance(); // Eat else
-        if (peek(-1).ln == peek(0).ln) {
-            // else if — condition on same line
+        if (!_is(TOKEN_KEYWORD, 0, "end", "print", "set", "while", "repeat", "if", "return", "break", "Import", "readfile", "overwrite", "put", NULL) && !is(TOKEN_EOF, 0) && !is(TOKEN_SEMICOLON, 0)) {
+            // Hardcoded because I couldn't find a more efficient way
             ASTNode* cond = parseExpression();
             ASTNode* node = createNode(NODE_ELSE, "else");
             addChild(node, cond);
@@ -688,7 +704,7 @@ ASTNode* parseStatement() {
             while (!is(TOKEN_EOF, 0)) {
                 if (parserError) break;
                 if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { parseStatement(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
                 ASTNode* stmt = parseStatement();
                 if (stmt) addChild(body, stmt);
                 else if (!parserError) advance();
@@ -703,7 +719,7 @@ ASTNode* parseStatement() {
             while (!is(TOKEN_EOF, 0)) {
                 if (parserError) break;
                 if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { parseStatement(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
                 ASTNode* stmt = parseStatement();
                 if (stmt) addChild(body, stmt);
                 else if (!parserError) advance();
@@ -750,10 +766,7 @@ ASTNode* parseStatement() {
             if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
                 advance(); // Eat 'end'
                 break;
-            } else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
-                parseStatement();
-                break;
-            }
+            } else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
             ASTNode* stmt = parseStatement();
             if (stmt) {
                 addChild(body, stmt);
@@ -834,11 +847,13 @@ ASTNode* parseStatement() {
         ASTNode* expr = parseExpression(); //String or anything that can be turned into it.
         ASTNode* node = createNode(NODE_FILE_INTERACTION, "overwrite");
         addChild(node, expr);
+        return node;
     } else if (_is(TOKEN_KEYWORD, 0, "put", NULL)) {
         advance();
         ASTNode* expr = parseExpression(); //String or anything that can be turned into it.
         ASTNode* node = createNode(NODE_FILE_INTERACTION, "put");
         addChild(node, expr);
+        return node;
     }
 
     // Handle assignments and expression statements
@@ -861,7 +876,7 @@ ASTNode* parseStatement() {
 
         if (opToken.type == TOKEN_COMPOUND_ASSIGN) {
             char opChar[2] = { opToken.value[0], '\0' };
-            ASTNode* binaryOp = createNode(NODE_BINARY_OP, opChar);
+            ASTNode* binaryOp = createNode(NODE_OPERATOR, opChar);
             binaryOp->left = copyAST(expr);
             binaryOp->right = rvalue;
             rvalue = binaryOp;
@@ -897,7 +912,7 @@ ASTNode* parseFile(TokenStream Tokens){
         if (stmt) {
             addChild(root, stmt);
         } else {
-            advance(); 
+            advance();
         }
     }
     

@@ -79,7 +79,7 @@ TokenStream* lex(char* source) {
                 while (*c != '\0' && *c != '\n'){if(*c == '\n')line++;character++;c++;} // COMMENTS!!
                 continue;
             } else if (*(c+1) == ';'){
-                while (*c != '\0' && (*c != ';' && *(c+1) == ':')){if(*c == '\n')line++;character++;c++;} // BLOCK COMMENTS!!
+                while (*c != '\0' && (*c == ';' && *(c+1) == ':')){if(*c == '\n')line++;character++;c++;} // BLOCK COMMENTS!!
                 if(*c == '\0'){printf("[LEXER] WARN: block comment reaches end of file!");c+=2;}
                 continue;
             } else {
@@ -103,6 +103,12 @@ TokenStream* lex(char* source) {
 
         if (*c == '$'){
             addToken(stream, TOKEN_DLRSIGN, "$");
+            c++;
+            continue;
+        }
+
+        if (*c == '@') {
+            addToken(stream, TOKEN_AT, "@");
             c++;
             continue;
         }
@@ -202,6 +208,12 @@ TokenStream* lex(char* source) {
             continue;
         }
 
+        if (*c == '-' && *(c+1) == '/'){
+            addToken(stream, TOKEN_OPERATOR, "-/");
+            c += 2;
+            continue;
+        }
+
         if (strchr("+-*/", *c)) {
             if (*(c+1) == '=') {
                 char buffer[3] = {*c, '=', '\0'};
@@ -225,13 +237,7 @@ TokenStream* lex(char* source) {
 
         if (strchr("%%", *c)){
             addToken(stream, TOKEN_OPERATOR, "%%");
-            c++;
-            continue;
-        }
-
-        if (strchr("-", *c) && strchr("/", *(c+1))){
-            addToken(stream, TOKEN_OPERATOR, "-/");
-            c += 2;
+            c+=2;
             continue;
         }
 
@@ -253,8 +259,33 @@ TokenStream* lex(char* source) {
             addToken(stream, TOKEN_STRING, buffer);
             continue;
         }
+        if (*c == '"') {
+            c++; // Skip opening quote
+            char buffer[256] = {0};
+            int i = 0;
+            while (*c != '"' && *c != '\0') {
+                character++;
+                buffer[i++] = *c++;
+            }
+            if (*c == '"') c++; // Skip closing quote
+            addToken(stream, TOKEN_STRING, buffer);
+            continue;
+        }
+        if (*c == '\'') { // Single quotes are raw strings. (Yet to be handled, for now just lexed)
+            c++; // Skip opening quote
+            char buffer[256] = {0};
+            int i = 0;
+            while (*c != '\'' && *c != '\0') {
+                character++;
+                buffer[i++] = *c++;
+            }
+            if (*c == '\'') c++; // Skip closing quote
+            addToken(stream, TOKEN_STRING, buffer);
+            continue;
+        }
 
         addToken(stream, ERR, "UNKNOWN");
+        c++; //Add to not infinite-loop.
     }
 
     addToken(stream, TOKEN_EOF, "EOF");

@@ -24,6 +24,7 @@ typedef enum {
     TOKEN_DOT, //.
     TOKEN_UNARY, // !, not, -x
     TOKEN_DLRSIGN, //$ (for cmd)
+    TOKEN_AT, // For @ (type checking)
     ERR //Mostly for when theres multiple . in float. Maybe other uses in the future
 } TokenType;
 

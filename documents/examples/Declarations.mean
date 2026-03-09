@@ -4,8 +4,6 @@ Use set keyword.
 Like this:
 ;:
 
-print "Please input a path. Use \\ for backslashes."; set path = input()
-
 set checkPath(Path)
     readfile Path 
         print "Path does exist."
@@ -16,10 +14,16 @@ set checkPath(Path)
     end
 end
 
-if checkPath(path)
-    print "Path does exist!"
-else
-    print "Path does not exist!"
+while true
+    print "Please input a path. Use \\ for backslashes."; set path = input()
+    if path equals "exit"
+        break
+    end
+    if checkPath(path)
+        print "Path does exist!"
+    else
+        print "Path does not exist!"
+    end
 end
 :;
 Simple path-checking script.

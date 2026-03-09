@@ -9,4 +9,4 @@ if result isnt 0
 else
     print "Opened!"
 end
-::unset result <- This is planned syntax, and wouldn't be needed but would be good practice.
+::unset result <- This is planned syntax, and wouldnt be needed but would be good practice.

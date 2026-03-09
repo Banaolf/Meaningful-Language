@@ -30,8 +30,19 @@ typedef enum {
     VAL_FLOAT,
     VAL_RETURN,
     VAL_BREAK,
-    VAL_NON
+    VAL_NON,
+    VAL_FUNCTION
 } ValueType;
+
+typedef enum {
+    list,
+    string,
+    integer,
+    Float,
+    dict,
+    file,
+    function
+} AllTypes;
 
 typedef enum {
     OBJ_STRING,
@@ -65,17 +76,15 @@ typedef struct ObjFile {
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
 #define AS_OBJECT(value)    ((value).as.obj)
 #define OBJ_TYPE(value)     (AS_OBJECT(value)->type)
-#define IS_OBJ_TYPE(value, type)  (IS_OBJECT(value) && OBJ_TYPE(value) == type)
-
-#define IS_STRING(value)    (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_STRING)
-#define IS_LIST(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_LIST)
-#define IS_DICT(value)      (IS_OBJECT(value) && OBJ_TYPE(value) == OBJ_DICT)
+#define IS_OBJ_TYPE(value, type)  (IS_OBJECT(value) && OBJ_TYPE(value) == type) //Replace all IS_ with this.
 
 #define AS_STRING(value)    ((ObjString*)AS_OBJECT(value))
 #define AS_CSTRING(value)   (AS_STRING(value)->chars)
 #define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
 #define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
+#define AS_FILE(value)      ((ObjFile*)AS_OBJECT(value))
 
+typedef struct Symbol Symbol;
 // The language's core Value type. Can be a number or a pointer to an Object.
 struct Value {
     ValueType type;
@@ -85,6 +94,7 @@ struct Value {
         Object* obj;
         Exception exc;
         float decimal;
+        Symbol* func;
     } as;
 };
 
@@ -137,7 +147,10 @@ Value make(ValueType type, ...) {
         result.as.number = argument.as.number;
         result.as.decimal = argument.as.decimal;
         result.as.exc = argument.as.exc;
-    } 
+    } else if (type == VAL_FUNCTION) {
+        Symbol* arg = va_arg(args, Symbol*);
+        result.as.func = arg;
+    }
     va_end(args);
     return result;
 }
@@ -157,6 +170,43 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
     return v;
 }
 
+bool checkType(char* notation, Value val) {
+    if (strcmp(notation, "string") == 0) return IS_OBJ_TYPE(val, OBJ_STRING);
+    if (strcmp(notation, "int")    == 0) return val.type == VAL_INT;
+    if (strcmp(notation, "float")  == 0) return val.type == VAL_FLOAT;
+    if (strcmp(notation, "list")   == 0) return IS_OBJ_TYPE(val, OBJ_LIST);
+    if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
+    if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
+    if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
+    if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
+    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; // how the hell do i do this?
+    //Note: Handle @optional elsewhere
+    return false;
+}
+
+bool checkCondition(char* condition, Value val) {
+    if (val.type == VAL_OBJECT) {
+        if (strcmp(condition, "not_empty") == 0) {
+            if (IS_OBJ_TYPE(val, OBJ_STRING)) return AS_STRING(val)->length > 0;
+            if (IS_OBJ_TYPE(val, OBJ_LIST))   return AS_LIST(val)->count > 0;
+            if (IS_OBJ_TYPE(val, OBJ_DICT))   return HASH_COUNT(AS_DICT(val)->head) > 0;
+            if (IS_OBJ_TYPE(val, OBJ_FILE)) 
+            return true;
+        }
+    } else if (val.type == VAL_INT || val.type == VAL_FLOAT) { //so general numbers
+        if (strcmp(condition, "positive_with_zero") == 0) {
+            if (val.type == VAL_INT)   return val.as.number >= 0;
+            if (val.type == VAL_FLOAT) return val.as.decimal >= 0;
+            return true;
+        }
+        if (strcmp(condition, "positive") == 0) {
+            if (val.type == VAL_INT)   return val.as.number > 0;
+            if (val.type == VAL_FLOAT) return val.as.decimal > 0;
+            return true;
+        }
+    }
+    return NULL;
+}
 
 // --- Garbage Collector ---
 
@@ -311,7 +361,7 @@ void defineNative(const char* name, NativeFn func) {
 bool is_falsy(Value val) {
     return ( //Made easy to edit for the future
         (val.type == VAL_INT && val.as.number == 0) || 
-        (IS_STRING(val) && AS_STRING(val)-> length == 0) || 
+        (IS_OBJ_TYPE(val, OBJ_STRING) && AS_STRING(val)-> length == 0) || 
         val.type == VAL_NON || 
         (val.type == VAL_FLOAT && val.as.decimal == 0.0f));
 }
@@ -330,7 +380,6 @@ Symbol* getCallable(char* name) {
     return NULL;
 }
 
-// New scope management functions
 void enterScope() {
     Scope* newScope = malloc(sizeof(Scope));
     newScope->symbols = NULL;
@@ -353,7 +402,6 @@ void exitScope() {
     }
 }
 
-// This replaces pushVariable
 void defineVariable(char* name, Value val) {
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
@@ -462,8 +510,9 @@ void printValueRecursive(Value val) {
     if (val.type == VAL_INT) printf("%d", val.as.number);
     else if (val.type == VAL_NON) printf("non");
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
-    else if (IS_STRING(val)) printf("%s", AS_CSTRING(val));
-    else if (IS_LIST(val)) {
+    else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("%s", AS_CSTRING(val));
+    else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
+    else if (IS_OBJ_TYPE(val, OBJ_LIST)) {
         ValueList* list = AS_LIST(val);
         printf("[");
         for (int i = 0; i < list->count; i++) {
@@ -471,7 +520,7 @@ void printValueRecursive(Value val) {
             if (i < list->count - 1) printf(", ");
         }
         printf("]");
-    } else if (IS_DICT(val)) {
+    } else if (IS_OBJ_TYPE(val, OBJ_DICT)) {
         ValueDict* dict = AS_DICT(val);
         printf("{");
         DictEntry *s, *tmp;
@@ -500,7 +549,7 @@ char* readFile(const char* path);
 
 char* valueToString(Value val) {
     char tmp[64];
-    if (IS_STRING(val)) {
+    if (IS_OBJ_TYPE(val, OBJ_STRING)) {
         return strdup(AS_CSTRING(val));
     } else if (val.type == VAL_INT) {
         snprintf(tmp, sizeof(tmp), "%d", val.as.number);
@@ -510,7 +559,7 @@ char* valueToString(Value val) {
         return strdup(tmp);
     } else if (val.type == VAL_NON || val.type == VAL_VOID) {
         return strdup("non");
-    } else if (IS_LIST(val)) {
+    } else if (IS_OBJ_TYPE(val, OBJ_LIST)) {
         ValueList* list = AS_LIST(val);
         size_t cap = 64;
         size_t len = 0;
@@ -529,7 +578,7 @@ char* valueToString(Value val) {
         buf[len++] = ']';
         buf[len] = '\0';
         return buf;
-    } else if (IS_DICT(val)) {
+    } else if (IS_OBJ_TYPE(val, OBJ_DICT)) {
         ValueDict* dict = AS_DICT(val);
         size_t cap = 64;
         size_t len = 0;
@@ -592,12 +641,16 @@ Value evaluate(ASTNode* node) {
     }
     
     // 2. Variables
-    if (node->type == NODE_VARIABLE) {
-        return getVariable(node->value);
+    if (node->type == NODE_VARIABLE) { // Prioritise variables over functions
+        Value v = getVariable(node->value);
+        if (v.type != VAL_ERR) return v;
+        Symbol* callable = getCallable(node->value);
+        if (callable) return make(VAL_FUNCTION, callable);
+        return v; // return the original error
     }
 
-    // 3. Binary Operations
-    if (node->type == NODE_BINARY_OP) {
+    // 3. Operations
+    if (node->type == NODE_OPERATOR) {
         Value left = evaluate(node->left);
         if (left.type == VAL_ERR) return left;
         
@@ -605,7 +658,7 @@ Value evaluate(ASTNode* node) {
         if (right.type == VAL_ERR) return right;
 
         // String concatenation
-        if (strcmp(node->value, "+") == 0 && IS_STRING(left) && IS_STRING(right)) {
+        if (strcmp(node->value, "+") == 0 && IS_OBJ_TYPE(left, OBJ_STRING) && IS_OBJ_TYPE(right, OBJ_STRING)) {
             size_t len1 = AS_STRING(left)->length;
             size_t len2 = AS_STRING(right)->length;
             char* result_chars = malloc(len1 + len2 + 1);
@@ -630,7 +683,6 @@ Value evaluate(ASTNode* node) {
                 return throwException(TypeException, "TypeException: Type mismatch in binary operation '%s'.\n", node->value);
             if (right.type != VAL_INT && right.type != VAL_FLOAT)
                 return throwException(TypeException, "TypeException: Type mismatch in binary operation '%s'.\n", node->value);
-
             if (strcmp(node->value, "+") == 0) {
                 return eitherFloat ? make(VAL_FLOAT, l + r) : make(VAL_INT, (int)(l + r));
             }
@@ -678,7 +730,7 @@ Value evaluate(ASTNode* node) {
         if (right.type == VAL_ERR) return right;
 
         if (strcmp(node->value, "==") == 0 || strcmp(node->value, "equals") == 0) {
-            if (IS_STRING(left) && IS_STRING(right)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
+            if (IS_OBJ_TYPE(left, OBJ_STRING) && IS_OBJ_TYPE(right, OBJ_STRING)) return make(VAL_INT, strcmp(AS_CSTRING(left), AS_CSTRING(right)) == 0);
             return make(VAL_INT, left.as.number == right.as.number);
         }
         if (strcmp(node->value, "!=") == 0 || strcmp(node->value, "isnt") == 0) return make(VAL_INT, left.as.number != right.as.number);
@@ -723,7 +775,7 @@ Value evaluate(ASTNode* node) {
             Value index = evaluate(lvalue->right);
             if (index.type == VAL_ERR) return index;
 
-            if (IS_LIST(collection)) {
+            if (IS_OBJ_TYPE(collection, OBJ_LIST)) {
                 if (index.type != VAL_INT) return throwException(TypeException, "TypeException: List index must be an integer.\n");
                 int i = index.as.number;
                 ValueList* list = AS_LIST(collection);
@@ -732,8 +784,8 @@ Value evaluate(ASTNode* node) {
                 return rvalue;
             }
 
-            if (IS_DICT(collection)) {
-                if (!IS_STRING(index)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
+            if (IS_OBJ_TYPE(collection, OBJ_DICT)) {
+                if (!IS_OBJ_TYPE(index, OBJ_STRING)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
                 char* key = AS_CSTRING(index);
                 ValueDict* dict = AS_DICT(collection);
                 DictEntry* entry;
@@ -756,7 +808,7 @@ Value evaluate(ASTNode* node) {
         if (lvalue->type == NODE_MEMBER_ACCESS) {
             Value obj = evaluate(lvalue->left);
             if (obj.type == VAL_ERR) return obj;
-            if (!IS_DICT(obj)) return throwException(TypeException, "TypeException: Attribute assignment is only supported on dictionaries.\n");
+            if (!IS_OBJ_TYPE(obj, OBJ_DICT)) return throwException(TypeException, "TypeException: Attribute assignment is only supported on dictionaries.\n");
 
             ValueDict* dict = AS_DICT(obj);
             char* key = lvalue->value; // attribute name is stored in node->value
@@ -806,7 +858,30 @@ Value evaluate(ASTNode* node) {
             }
             enterScope();
             for (int i = 0; i < paramCount; i++) {
-                defineVariable(funcDef->children[i]->value, argValues[i]);
+                ASTNode* param = funcDef->children[i];
+                Value arg = argValues[i];
+
+                if (param->type_notation) {
+                    if (!checkType(param->type_notation, arg)) {
+                        result = throwException(TypeException,
+                            "TypeException: Argument '%s' expected type '%s'.\n",
+                            param->value, param->type_notation);
+                        exitScope();
+                        goto end_call;
+                    }
+                }
+
+                if (param->type_condition) {
+                    if (!checkCondition(param->type_condition, arg)) {
+                        result = throwException(ArgumentException,
+                            "ArgumentException: Argument '%s' failed condition '%s'.\n",
+                            param->value, param->type_condition);
+                        exitScope();
+                        goto end_call;
+                    }
+                }
+
+                defineVariable(param->value, arg);
             }
             ASTNode* body = funcDef->children[paramCount];
             if (body && body->children) {
@@ -847,7 +922,7 @@ Value evaluate(ASTNode* node) {
         Value result = make(VAL_VOID);
 
         // --- String methods ---
-        if (IS_STRING(obj)) {
+        if (IS_OBJ_TYPE(obj, OBJ_STRING)) {
             char* str = AS_CSTRING(obj);
             size_t len = AS_STRING(obj)->length;
 
@@ -856,7 +931,7 @@ Value evaluate(ASTNode* node) {
                 result = make(VAL_INT, (int)len);
 
             } else if (strcmp(method, "isSpace") == 0){
-                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isSpace() takes 0 arguments.\n");
+                if (argCount != 0) return throwException(ArgumentException, "ArgumentException: isSpace() takes 0 arguments.\n");
                 if (len < 0) return make(VAL_INT, 0);
                 for (int i = 0; i < len; i++) {
                     if (!isspace((unsigned char)str[i])) return make(VAL_INT, 0);
@@ -864,7 +939,7 @@ Value evaluate(ASTNode* node) {
                 result = make(VAL_INT, 1);
                 free(argValues);
             } else if (strcmp(method, "isAlphabetical") == 0){
-                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isAlphabetical() takes 0 arguments.\n");
+                if (argCount != 0) return throwException(ArgumentException, "ArgumentException: isAlphabetical() takes 0 arguments.\n");
                 if (len < 0) return make(VAL_INT, 0);
                 for (int i = 0; i < len; i++) {
                     if (!isalpha((unsigned char)str[i])) return make(VAL_INT, 0);
@@ -872,7 +947,7 @@ Value evaluate(ASTNode* node) {
                 result = make(VAL_INT, 1);
                 free(argValues);
             } else if (strcmp(method, "isAlphaNumeric") == 0){
-                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isAlphaNumeric() takes 0 arguments.\n");
+                if (argCount != 0) return throwException(ArgumentException, "ArgumentException: isAlphaNumeric() takes 0 arguments.\n");
                 if (len < 0) return make(VAL_INT, 0);
                 for (int i = 0; i < len; i++) {
                     if (!isalnum((unsigned char)str[i])) return make(VAL_INT, 0);
@@ -880,7 +955,7 @@ Value evaluate(ASTNode* node) {
                 result = make(VAL_INT, 1);
                 free(argValues);
             } else if (strcmp(method, "isDigit")==0) {
-                if (argCount != 1) return throwException(ArgumentException, "ArgumentException: isDigit() takes 0 arguments.\n");
+                if (argCount != 0) return throwException(ArgumentException, "ArgumentException: isDigit() takes 0 arguments.\n");
                 if (len < 0) return make(VAL_INT, 0);
                 for (int i = 0; i < len; i++) {
                     if (!isdigit((unsigned char)str[i])) return make(VAL_INT, 0);
@@ -904,7 +979,7 @@ Value evaluate(ASTNode* node) {
                 free(buf);
 
             } else if (strcmp(method, "contains") == 0) {
-                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: contains() takes 1 string argument.\n"); }
+                if (argCount != 1 || !IS_OBJ_TYPE(argValues[0], OBJ_STRING)) { free(argValues); return throwException(ArgumentException, "ArgumentException: contains() takes 1 string argument.\n"); }
                 result = make(VAL_INT, strstr(str, AS_CSTRING(argValues[0])) != NULL ? 1 : 0);
 
             } else if (strcmp(method, "slice") == 0) {
@@ -924,7 +999,7 @@ Value evaluate(ASTNode* node) {
             }
 
         // --- List methods ---
-        } else if (IS_LIST(obj)) {
+        } else if (IS_OBJ_TYPE(obj, OBJ_LIST)) {
             ValueList* list = AS_LIST(obj);
 
             if (strcmp(method, "append") == 0) {
@@ -951,17 +1026,17 @@ Value evaluate(ASTNode* node) {
             }
 
         // --- Dict methods ---
-        } else if (IS_DICT(obj)) {
+        } else if (IS_OBJ_TYPE(obj, OBJ_DICT)) {
             ValueDict* dict = AS_DICT(obj);
 
             if (strcmp(method, "has") == 0) {
-                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: has() takes 1 string argument.\n"); }
+                if (argCount != 1 || !IS_OBJ_TYPE(argValues[0], OBJ_STRING)) { free(argValues); return throwException(ArgumentException, "ArgumentException: has() takes 1 string argument.\n"); }
                 DictEntry* entry;
                 HASH_FIND_STR(dict->head, AS_CSTRING(argValues[0]), entry);
                 result = make(VAL_INT, entry != NULL ? 1 : 0);
 
             } else if (strcmp(method, "remove") == 0) {
-                if (argCount != 1 || !IS_STRING(argValues[0])) { free(argValues); return throwException(ArgumentException, "ArgumentException: remove() takes 1 string argument.\n"); }
+                if (argCount != 1 || !IS_OBJ_TYPE(argValues[0], OBJ_STRING)) { free(argValues); return throwException(ArgumentException, "ArgumentException: remove() takes 1 string argument.\n"); }
                 DictEntry* entry;
                 char* key = AS_CSTRING(argValues[0]);
                 HASH_FIND_STR(dict->head, key, entry);
@@ -1006,7 +1081,7 @@ Value evaluate(ASTNode* node) {
         Value obj = evaluate(node->left);
         if (obj.type == VAL_ERR) return obj;
 
-        if (!IS_DICT(obj)) return throwException(TypeException, "TypeException: Attribute access with '.' is only supported on dictionaries.\n");
+        if (!IS_OBJ_TYPE(obj, OBJ_DICT)) return throwException(TypeException, "TypeException: Attribute access with '.' is only supported on dictionaries.\n");
 
         ValueDict* dict = AS_DICT(obj);
         DictEntry* entry;
@@ -1031,7 +1106,7 @@ Value evaluate(ASTNode* node) {
         ValueDict* dict = allocateDict();
         for (int i = 0; i < node->childCount; i += 2) {
             Value keyVal = evaluate(node->children[i]);
-            if (!IS_STRING(keyVal)) return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
+            if (!IS_OBJ_TYPE(keyVal, OBJ_STRING)) return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
 
             Value val = evaluate(node->children[i+1]);
             if (val.type == VAL_ERR) return val;
@@ -1058,7 +1133,7 @@ Value evaluate(ASTNode* node) {
         Value index = evaluate(node->right);
         if (index.type == VAL_ERR) return index;
 
-        if (IS_LIST(collection)) {
+        if (IS_OBJ_TYPE(collection, OBJ_LIST)) {
             if (index.type != VAL_INT) return throwException(TypeException, "TypeException: List index must be an integer.\n");
             int i = index.as.number;
             ValueList* list = AS_LIST(collection);
@@ -1066,8 +1141,8 @@ Value evaluate(ASTNode* node) {
             return list->items[i];
         }
 
-        if (IS_DICT(collection)) {
-            if (!IS_STRING(index)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
+        if (IS_OBJ_TYPE(collection, OBJ_DICT)) {
+            if (!IS_OBJ_TYPE(index, OBJ_STRING)) return throwException(TypeException, "TypeException: Dictionary key must be a string.\n");
             ValueDict* dict = AS_DICT(collection);
             char* key = AS_CSTRING(index);
             DictEntry* entry;
@@ -1076,7 +1151,7 @@ Value evaluate(ASTNode* node) {
             return throwException(EntryNotFoundException, "EntryNotFoundException: Key '%s' not found in dictionary.\n", key);
         }
 
-        if (IS_STRING(collection)) {
+        if (IS_OBJ_TYPE(collection, OBJ_STRING)) {
             if (index.type != VAL_INT) return throwException(TypeException, "TypeException: String index must be an integer.\n");
             int i = index.as.number;
             ObjString* s = AS_STRING(collection);
@@ -1157,7 +1232,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_IMPORT) {
         Value pathVal = evaluate(node->right);
         if (pathVal.type == VAL_ERR) return pathVal;
-        if (!IS_STRING(pathVal)) return throwException(TypeException, "TypeException: Import path must be a string.\n");
+        if (!IS_OBJ_TYPE(pathVal, OBJ_STRING)) return throwException(TypeException, "TypeException: Import path must be a string.\n");
 
         char* importPath = AS_CSTRING(pathVal);
         char* source = "";
@@ -1207,7 +1282,7 @@ Value evaluate(ASTNode* node) {
         if (valPath.type == VAL_ERR) return valPath;
 
         char* path = NULL;
-        if (IS_STRING(valPath)) {
+        if (IS_OBJ_TYPE(valPath, OBJ_STRING)) {
             path = AS_CSTRING(valPath);
         } else if (IS_OBJECT(valPath) && AS_OBJECT(valPath)->type == OBJ_FILE) {
             ObjFile* existing = (ObjFile*)AS_OBJECT(valPath);
@@ -1271,7 +1346,7 @@ Value evaluate(ASTNode* node) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
             Value result = evaluate(node->children[0]);
             if (result.type == VAL_ERR) return result;
-            if (!IS_STRING(result)) return throwException(TypeException, "TypeException: overwrite expects a string.\n");
+            if (!IS_OBJ_TYPE(result, OBJ_STRING)) return throwException(TypeException, "TypeException: overwrite expects a string.\n");
             rewind(currentFile->file);
             _chsize(fileno(currentFile->file), 0); // Clear the file (WINDOWS ONLY)
             fprintf(currentFile->file, "%s", AS_CSTRING(result));
@@ -1280,7 +1355,7 @@ Value evaluate(ASTNode* node) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
             Value result = evaluate(node->children[0]);
             if (result.type == VAL_ERR) return result;
-            if (!IS_STRING(result)) return throwException(TypeException, "TypeException: put expects a string.\n");
+            if (!IS_OBJ_TYPE(result, OBJ_STRING)) return throwException(TypeException, "TypeException: put expects a string.\n");
             fseek(currentFile->file, 0, SEEK_END); // Make sure we're at the end
             fprintf(currentFile->file, "%s", AS_CSTRING(result));
         }
@@ -1290,7 +1365,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_CMD) {
         Value cmd = evaluate(node->right);
         if (cmd.type == VAL_ERR) return cmd;
-        if (!IS_STRING(cmd)) return throwException(TypeException, "TypeException: $ expects a string.\n");
+        if (!IS_OBJ_TYPE(cmd, OBJ_STRING)) return throwException(TypeException, "TypeException: $ expects a string.\n");
         int result = system(AS_CSTRING(cmd));
         return make(VAL_INT, result);
     }
@@ -1334,9 +1409,9 @@ Value native_clock(int argCount, Value* args) {
 Value native_length(int argc, Value* args) {
     if (argc != 1) return throwException(ArgumentException, "ArgumentException: length() takes 1 argument.");
     Value val = args[0];
-    if (IS_STRING(val)) return make(VAL_INT, AS_STRING(val)->length);
-    if (IS_DICT(val))   return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
-    if (IS_LIST(val))   return make(VAL_INT, AS_LIST(val)->count);
+    if (IS_OBJ_TYPE(val, OBJ_STRING)) return make(VAL_INT, AS_STRING(val)->length);
+    if (IS_OBJ_TYPE(val, OBJ_DICT))   return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
+    if (IS_OBJ_TYPE(val, OBJ_LIST))   return make(VAL_INT, AS_LIST(val)->count);
     if (isVal(val, VAL_INT)) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", val.as.number);
@@ -1532,11 +1607,11 @@ int main(int argc, char *argv[]) {
         returningVal = 0; 
     }//same thing as using the goto
     end_of_interpreter: //Added just for -t
-    freeSymbolTable();
-    collectGarbage();
-    currentFile = NULL;
-    free(currentFile);
-    return returningVal;
+        freeSymbolTable();
+        collectGarbage();
+        currentFile = NULL;
+        free(currentFile);
+        return returningVal;
 }
 /*
 Exit codes
