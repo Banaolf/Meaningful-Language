@@ -18,3 +18,5 @@ build.cmd
 run_tests.ps1 
 /scripts
 #Still developing the run_tests!
+makefile
+#Note that this makefile without a . is my makefile, that is why its added here.
