@@ -34,7 +34,7 @@ typedef enum {
     NODE_READFILE,
     NODE_FILE_INTERACTION,
     NODE_CMD,
-    NODE_AT
+    NODE_CONVERSION
 } NodeType;
 
 typedef struct ASTNode {
@@ -58,7 +58,8 @@ typedef enum {
     ArgumentException,
     IndexOutOfBoundsException,
     EntryNotFoundException,
-    TypeException
+    TypeException,
+    ConversionException
 }ExceptionType;
 
 typedef struct{

@@ -373,6 +373,16 @@ ASTNode* parsePrimaryExpression() {
     if (is(TOKEN_IDENTIFIER, 0)) {
         Token t = peek(0);
         advance();
+        if (is(TOKEN_AT, 0)) {
+            advance();
+            if (!is(TOKEN_IDENTIFIER, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
+            Token typeToken = peek(0);
+            ASTNode* node = createNode(NODE_CONVERSION, t.value);
+            node->left = createNode(NODE_VARIABLE, t.value);
+            node->right = createNode(NODE_VARIABLE, typeToken.value);
+            advance();
+            return node;
+        }
         return createNode(NODE_VARIABLE, t.value);
     }
 
@@ -766,7 +776,7 @@ ASTNode* parseStatement() {
             if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
                 advance(); // Eat 'end'
                 break;
-            } else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
+            } else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(node, elsenode);} break; }
             ASTNode* stmt = parseStatement();
             if (stmt) {
                 addChild(body, stmt);

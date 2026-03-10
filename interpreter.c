@@ -184,6 +184,16 @@ bool checkType(char* notation, Value val) {
     return false;
 }
 
+bool checkTypeConversable(char* notation) {
+    if (strcmp(notation, "string") == 0) return true;
+    if (strcmp(notation, "int")    == 0) return true;
+    if (strcmp(notation, "float")  == 0) return true;
+    if (strcmp(notation, "list")   == 0) return true;
+    if (strcmp(notation, "dict")   == 0) return true;
+    if (strcmp(notation, "bool")   == 0) return true;
+    return false;
+}
+
 bool checkCondition(char* condition, Value val) {
     if (val.type == VAL_OBJECT) {
         if (strcmp(condition, "not_empty") == 0) {
@@ -828,6 +838,56 @@ Value evaluate(ASTNode* node) {
         return throwException(RuntimeException, "RuntimeException: Invalid assignment target.\n");
     }
 
+    //4.1 Conversions
+    if (node->type == NODE_CONVERSION) {
+        Value var = getVariable(node->left->value);
+        if (var.type == VAL_ERR) return var;
+
+        char* right = node->right->value;
+        if (checkTypeConversable(right)) {
+            if (strcmp(right, "int") == 0) {
+                if (var.type == VAL_OBJECT && IS_OBJ_TYPE(var, OBJ_STRING)) {
+                    for (int i = 0; i < AS_STRING(var)->length; i++) {
+                        if (!isdigit((unsigned char)AS_CSTRING(var)[i])) return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");                        
+                    }
+                    return make(VAL_INT, atoi(AS_CSTRING(var)));
+                } else if (var.type == VAL_FLOAT) {
+                    return make(VAL_INT, floor(var.as.decimal));
+                } else if (IS_OBJ_TYPE(var, OBJ_DICT)) {
+                    return make(VAL_INT, HASH_COUNT(AS_DICT(var)->head));
+                } else if (IS_OBJ_TYPE(var, OBJ_LIST)) {
+                    return make(VAL_INT, AS_LIST(var)->count);
+                } else if (var.type == VAL_INT) {
+                    return var;
+                } else return throwException(ConversionException, "ConversionException: Cannot transform '%s' to integer.\n", right);
+            } else if (strcmp(right, "string") == 0) {
+                return toString(var);
+            } else if (strcmp(right, "list") == 0) {
+                return make(VAL_OBJECT, AS_LIST(var));
+            } else if (strcmp(right, "dict")==0) {
+                return make(VAL_OBJECT, AS_DICT(var));
+            } else if (strcmp(right, "bool") == 0) {
+                if (is_falsy(var)) return make(VAL_INT, 0);
+                return make(VAL_INT, 1);
+            } else if (strcmp(right, "float") == 0) {
+                if (var.type == VAL_OBJECT && IS_OBJ_TYPE(var, OBJ_STRING)) {
+                    for (int i = 0; i < AS_STRING(var)->length; i++) {
+                        if (!isdigit((unsigned char)AS_CSTRING(var)[i]) || (unsigned char)AS_CSTRING(var)[i] != '.') return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");                        
+                    }
+                    return make(VAL_FLOAT, (float)atof(AS_CSTRING(var)));
+                } else if (var.type == VAL_FLOAT) {
+                    return var;
+                } else if (IS_OBJ_TYPE(var, OBJ_DICT)) {
+                    return make(VAL_FLOAT, (float)HASH_COUNT(AS_DICT(var)->head)); //This is meant to do this (which is the same length())
+                } else if (IS_OBJ_TYPE(var, OBJ_LIST)) {
+                    return make(VAL_FLOAT, (float)AS_LIST(var)->count);
+                } else if (var.type == VAL_INT) {
+                    return make(VAL_FLOAT, (float)var.as.number);
+                } else return throwException(ConversionException, "ConversionException: Cannot transform '%s' to integer.\n", right);
+            } else return throwException(ConversionException, "ConversionException: Cannot convert to '%s'.\n", right);
+        } else return throwException(TypeException, "TypeException: Type does not exist or can't be converted to.");
+    }
+
     // 5. Function Definitions
     if (node->type == NODE_FUNCTION_DEF) {
         defineFunction(node->value, node);
@@ -1178,6 +1238,9 @@ Value evaluate(ASTNode* node) {
         if (!is_falsy(cond)) {
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+        } else if (node->childCount == 3) {
+            Value res = evaluate(node->children[2]);
+            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         }
         return make(VAL_VOID);
     }
@@ -1189,6 +1252,9 @@ Value evaluate(ASTNode* node) {
             if (cond.type == VAL_ERR) return cond;
             if (!is_falsy(cond)) {
                 Value res = evaluate(node->children[1]);
+                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+            } else if (node->childCount == 3) {
+                Value res = evaluate(node->children[2]);
                 if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
             }
             return make(VAL_VOID);
