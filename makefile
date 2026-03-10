@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -static -O3 -Wall -Wextra -lm
+CFLAGS = -static -O3 -Wall -Wextra 
 AR = ar
 ARFLAGS = rcs
 
@@ -12,7 +12,7 @@ MAIN_OBJ = interpreter.o
 all: $(TARGET)
 
 $(TARGET): $(MAIN_OBJ) $(LIB_NAME)
-	$(CC) $(CFLAGS) -o $(TARGET) $(MAIN_OBJ) -L. -lcore
+	$(CC) $(CFLAGS) -o $(TARGET) $(MAIN_OBJ) -L. -lcore -lm
 	rm *.o *.a 
 $(LIB_NAME): $(LIB_OBJS)
 	$(AR) $(ARFLAGS) $(LIB_NAME) $(LIB_OBJS)
@@ -27,8 +27,7 @@ interpreter.o: interpreter.c parser.h lexer.h
 	$(CC) $(CFLAGS) -c interpreter.c
 
 clean:
-	cd .\bin
+	cd .\bin && rm -f *.exe
 	rm -f *.o *.a *.exe
-	cd ..\
 
 .PHONY: all clean
