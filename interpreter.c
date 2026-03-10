@@ -2,24 +2,25 @@
 #include "lexer.h"
 #include <ctype.h>
 #include <stddef.h>
+#include <stdlib.h> 
 #ifdef _WIN32
     #include <io.h>
     #define TRUNCATE_FILE(f) _chsize(fileno(f), 0)
     #define OPEN_URL(url) system("start " url)
 #else
     #include <unistd.h>
-    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #ifdef __APPLE__
         #define OPEN_URL(url) system("open " url)
-    #else
+        #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #elif __linux__
         #define OPEN_URL(url) system("xdg-open " url)
+        #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #endif
 #endif
 #include <stddef.h>
 #include <stdarg.h>
 
 #include <math.h>
-#include <stdlib.h> 
 #include <stdbool.h>
 #include <time.h>
 #include <string.h>
@@ -180,54 +181,6 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
     v.as.exc = makeException(type, buffer);
     printf("%s\n",v.as.exc.message);
     return v;
-}
-
-bool checkType(char* notation, Value val) {
-    if (strcmp(notation, "string") == 0) return IS_OBJ_TYPE(val, OBJ_STRING);
-    if (strcmp(notation, "int")    == 0) return val.type == VAL_INT;
-    if (strcmp(notation, "float")  == 0) return val.type == VAL_FLOAT;
-    if (strcmp(notation, "list")   == 0) return IS_OBJ_TYPE(val, OBJ_LIST);
-    if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
-    if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
-    if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
-    if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
-    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; // how the hell do i do this?
-    //Note: Handle @optional elsewhere
-    return false;
-}
-
-bool checkTypeConversable(char* notation) {
-    if (strcmp(notation, "string") == 0) return true;
-    if (strcmp(notation, "int")    == 0) return true;
-    if (strcmp(notation, "float")  == 0) return true;
-    if (strcmp(notation, "list")   == 0) return true;
-    if (strcmp(notation, "dict")   == 0) return true;
-    if (strcmp(notation, "bool")   == 0) return true;
-    return false;
-}
-
-bool checkCondition(char* condition, Value val) {
-    if (val.type == VAL_OBJECT) {
-        if (strcmp(condition, "not_empty") == 0) {
-            if (IS_OBJ_TYPE(val, OBJ_STRING)) return AS_STRING(val)->length > 0;
-            if (IS_OBJ_TYPE(val, OBJ_LIST))   return AS_LIST(val)->count > 0;
-            if (IS_OBJ_TYPE(val, OBJ_DICT))   return HASH_COUNT(AS_DICT(val)->head) > 0;
-            if (IS_OBJ_TYPE(val, OBJ_FILE)) 
-            return true;
-        }
-    } else if (val.type == VAL_INT || val.type == VAL_FLOAT) { //so general numbers
-        if (strcmp(condition, "positive_with_zero") == 0) {
-            if (val.type == VAL_INT)   return val.as.number >= 0;
-            if (val.type == VAL_FLOAT) return val.as.decimal >= 0;
-            return true;
-        }
-        if (strcmp(condition, "positive") == 0) {
-            if (val.type == VAL_INT)   return val.as.number > 0;
-            if (val.type == VAL_FLOAT) return val.as.decimal > 0;
-            return true;
-        }
-    }
-    return NULL;
 }
 
 // --- Garbage Collector ---
@@ -431,6 +384,67 @@ void defineVariable(char* name, Value val) {
     sym->funcNode = NULL;
     sym->nativeFunc = NULL;
     HASH_ADD_STR(currentScope->symbols, name, sym);
+}
+
+bool checkType(char* notation, Value val);bool checkCondition(char* condition, Value val);Value evaluate(ASTNode* node);//Forward declarationsss
+
+Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
+    Value result = make(VAL_VOID);
+    
+    if (callable->nativeFunc) {
+        return callable->nativeFunc(argCount, argValues);
+    }
+    
+    ASTNode* funcDef = callable->funcNode;
+    int paramCount = funcDef->childCount - 1;
+    
+    if (paramCount != argCount) {
+        return throwException(ArgumentException,
+            "ArgumentException: Function '%s' expected %d arguments but got %d.\n",
+            funcDef->value, paramCount, argCount);
+    }
+    
+    enterScope();
+    for (int i = 0; i < paramCount; i++) {
+        ASTNode* param = funcDef->children[i];
+        Value arg = argValues[i];
+        if (param->type_notation) {
+            if (!checkType(param->type_notation, arg)) {
+                exitScope();
+                return throwException(TypeException,
+                    "TypeException: Argument '%s' expected type '%s'.\n",
+                    param->value, param->type_notation);
+            }
+        }
+        if (param->type_condition) {
+            if (!checkCondition(param->type_condition, arg)) {
+                exitScope();
+                return throwException(ArgumentException,
+                    "ArgumentException: Argument '%s' failed condition '%s'.\n",
+                    param->value, param->type_condition);
+            }
+        }
+        defineVariable(param->value, arg);
+    }
+    
+    ASTNode* body = funcDef->children[paramCount];
+    if (body && body->children) {
+        for (int i = 0; i < body->childCount; i++) {
+            ASTNode* stmt = body->children[i];
+            if (stmt->type == NODE_RETURN) {
+                Value inner = evaluate(stmt->right);
+                result = make(VAL_RETURN, inner);
+                result.returnType = inner.type;
+                break;
+            }
+            Value stmtVal = evaluate(stmt);
+            if (stmtVal.type == VAL_ERR) { result = stmtVal; break; }
+        }
+    }
+    
+    exitScope();
+    if (result.type == VAL_RETURN) result.type = result.returnType;
+    return result;
 }
 
 void markRoots() {
@@ -679,6 +693,65 @@ Value toString(Value val) {
     Value result = make(VAL_OBJECT, (Object*)allocateString(str, strlen(str)));
     free(str);
     return result;
+}
+
+bool checkType(char* notation, Value val) {
+    if (strcmp(notation, "string") == 0) return IS_OBJ_TYPE(val, OBJ_STRING);
+    if (strcmp(notation, "int")    == 0) return val.type == VAL_INT;
+    if (strcmp(notation, "float")  == 0) return val.type == VAL_FLOAT;
+    if (strcmp(notation, "list")   == 0) return IS_OBJ_TYPE(val, OBJ_LIST);
+    if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
+    if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
+    if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
+    if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
+    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; // how the hell do i do this?
+    //Note: Handle @optional elsewhere
+    return false;
+}
+
+bool checkTypeConversable(char* notation) {
+    if (strcmp(notation, "string") == 0) return true;
+    if (strcmp(notation, "int")    == 0) return true;
+    if (strcmp(notation, "float")  == 0) return true;
+    if (strcmp(notation, "list")   == 0) return true;
+    if (strcmp(notation, "dict")   == 0) return true;
+    if (strcmp(notation, "bool")   == 0) return true;
+    return false;
+}
+
+bool checkCondition(char* condition, Value val) {
+    if (val.type == VAL_OBJECT) {
+        if (strcmp(condition, "not_empty") == 0) {
+            if (IS_OBJ_TYPE(val, OBJ_STRING)) return AS_STRING(val)->length > 0;
+            if (IS_OBJ_TYPE(val, OBJ_LIST))   return AS_LIST(val)->count > 0;
+            if (IS_OBJ_TYPE(val, OBJ_DICT))   return HASH_COUNT(AS_DICT(val)->head) > 0;
+            if (IS_OBJ_TYPE(val, OBJ_FILE)) 
+            return true;
+        }
+    } else if (val.type == VAL_INT || val.type == VAL_FLOAT) { //so general numbers
+        if (strcmp(condition, "positive_with_zero") == 0) {
+            if (val.type == VAL_INT)   return val.as.number >= 0;
+            if (val.type == VAL_FLOAT) return val.as.decimal >= 0;
+            return true;
+        }
+        if (strcmp(condition, "positive") == 0) {
+            if (val.type == VAL_INT)   return val.as.number > 0;
+            if (val.type == VAL_FLOAT) return val.as.decimal > 0;
+            return true;
+        }
+        if (strcmp(condition, "not_zero") == 0) {
+            if (val.type == VAL_INT) return val.as.number != 0;
+            if (val.type == VAL_INT) return val.as.decimal != 0.0;
+            return true;
+        }
+    } else if (val.type == VAL_FUNCTION) {
+        if (strcmp(condition, "returns")==0) {
+            return callSymbol(val.as.func, 0, NULL).type != VAL_VOID;
+        } else if (strcmp(condition, "no_return")==0) {
+            return callSymbol(val.as.func, 0, NULL).type == VAL_VOID;
+        }
+    }
+    return NULL;
 }
 
 // --- Evaluator ---
@@ -950,73 +1023,18 @@ Value evaluate(ASTNode* node) {
         if (!callable) {
             return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Function '%s' not defined.\n", node->value);
         }
-        Value result = make(VAL_VOID);
         int argCount = node->childCount;
         Value* argValues = malloc(sizeof(Value) * (argCount > 0 ? argCount : 1));
         for (int i = 0; i < argCount; i++) {
             argValues[i] = evaluate(node->children[i]);
             if (argValues[i].type == VAL_ERR) { free(argValues); return argValues[i]; }
         }
-        if (callable->nativeFunc) {
-            result = callable->nativeFunc(argCount, argValues);
-        } else {
-            ASTNode* funcDef = callable->funcNode;
-            int paramCount = funcDef->childCount - 1;
-            if (paramCount != argCount) {
-                result = throwException(ArgumentException, "ArgumentException: Function '%s' expected %d arguments but got %d.\n", funcDef->value, paramCount, argCount);
-                goto end_call;
-            }
-            enterScope();
-            for (int i = 0; i < paramCount; i++) {
-                ASTNode* param = funcDef->children[i];
-                Value arg = argValues[i];
-
-                if (param->type_notation) {
-                    if (!checkType(param->type_notation, arg)) {
-                        result = throwException(TypeException,
-                            "TypeException: Argument '%s' expected type '%s'.\n",
-                            param->value, param->type_notation);
-                        exitScope();
-                        goto end_call;
-                    }
-                }
-
-                if (param->type_condition) {
-                    if (!checkCondition(param->type_condition, arg)) {
-                        result = throwException(ArgumentException,
-                            "ArgumentException: Argument '%s' failed condition '%s'.\n",
-                            param->value, param->type_condition);
-                        exitScope();
-                        goto end_call;
-                    }
-                }
-
-                defineVariable(param->value, arg);
-            }
-            ASTNode* body = funcDef->children[paramCount];
-            if (body && body->children) {
-                for (int i = 0; i < body->childCount; i++) {
-                    ASTNode* stmt = body->children[i];
-                    if (stmt->type == NODE_RETURN) {
-                        Value inner = evaluate(stmt->right);
-                        result = make(VAL_RETURN, inner);
-                        result.returnType = inner.type;
-                        goto end_call_user;
-                    }
-                    Value stmtVal = evaluate(stmt);
-                    if (stmtVal.type == VAL_ERR) { result = stmtVal; goto end_call_user; }
-                }
-            }
-            end_call_user: 
-                exitScope();
-                if (result.type == VAL_RETURN) result.type = result.returnType;
-        }
-        end_call: 
-            free(argValues);
-            return result;
+        Value result = callSymbol(callable, argCount, argValues);
+        free(argValues);
+        return result;
     }
-
-    // 6b. Method Calls
+    
+    // 6.1 Method Calls
     if (node->type == NODE_METHOD_CALL) {
         Value obj = evaluate(node->left);
         if (obj.type == VAL_ERR) return obj;
@@ -1186,7 +1204,7 @@ Value evaluate(ASTNode* node) {
         return result;
     }
 
-    // 6c. Member Access: obj.attr  (attr read from a dict by key)
+    // 6.2 Member Access: obj.attr  (attr read from a dict by key)
     if (node->type == NODE_MEMBER_ACCESS) {
         Value obj = evaluate(node->left);
         if (obj.type == VAL_ERR) return obj;
@@ -1273,7 +1291,7 @@ Value evaluate(ASTNode* node) {
         return throwException(SyntaxException, "SyntaxException: Can only index into lists, dictionaries, or strings.\n");
     }
 
-    // 8. Native Print
+    // 7. Native Print
     if (node->type == NODE_PRINT) {
         Value val = evaluate(node->right);
         if (val.type == VAL_ERR) return val;
@@ -1281,7 +1299,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 8.1 Native represent
+    // 7.1 Native represent
     if (node->type == NODE_REPRESENT) {
         Value val = evaluate(node->right);
         if (val.type == VAL_ERR) return val;
@@ -1289,7 +1307,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 9. If Statements
+    // 8. If Statements
     if (node->type == NODE_IF) {
         Value cond = evaluate(node->children[0]);
         if (cond.type == VAL_ERR) return cond;
@@ -1303,7 +1321,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    //9.1 Else statements
+    //8.1 Else statements
     if (node->type == NODE_ELSE) {
         if (node->childCount == 2) {
             Value cond = evaluate(node->children[0]);
@@ -1324,7 +1342,7 @@ Value evaluate(ASTNode* node) {
         }
     }
 
-    // 10. While Loops
+    // 9. While Loops
     if (node->type == NODE_WHILE) {
         while (true) {
             Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
@@ -1337,7 +1355,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 10.1 Repeat loops
+    // 9.1 Repeat loops
     if (node->type == NODE_REPEAT) {
         Value times = evaluate(node->children[0]);
         if (times.type == VAL_ERR) return times;
@@ -1352,7 +1370,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 11. Import
+    // 10. Import
     if (node->type == NODE_IMPORT) {
         Value pathVal = evaluate(node->right);
         if (pathVal.type == VAL_ERR) return pathVal;
@@ -1395,12 +1413,12 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 12. Break
+    // 11. Break
     if (node->type == NODE_BREAK) {
         return make(VAL_BREAK);
     }
 
-    // 13. Readfile (builtin I/O)
+    // 12. Readfile (builtin I/O)
     if (node->type == NODE_READFILE) {
         Value valPath = evaluate(node->children[0]);
         if (valPath.type == VAL_ERR) return valPath;
@@ -1464,7 +1482,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 13.1 File interactions
+    // 12.1 File interactions
     if (node->type == NODE_FILE_INTERACTION) {
         if (strcmp(node->value, "overwrite") == 0) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
@@ -1485,7 +1503,7 @@ Value evaluate(ASTNode* node) {
         }
     }
 
-    // 14. Command Execution
+    // 13. Command Execution
     if (node->type == NODE_CMD) {
         Value cmd = evaluate(node->right);
         if (cmd.type == VAL_ERR) return cmd;
@@ -1494,7 +1512,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_INT, result);
     }
 
-    // 15. Program / Block Execution
+    // 14. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {
@@ -1729,7 +1747,8 @@ int main(int argc, char *argv[]) {
         finalCleanup(stream);
         free(src);
         returningVal = 0; 
-    }//same thing as using the goto
+        goto end_of_interpreter;
+    }
     end_of_interpreter: //Added just for -t
         freeSymbolTable();
         collectGarbage();
