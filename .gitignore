@@ -11,6 +11,7 @@
 .clangd
 .clang-format
 .installer/
+bin/
 build.cmd
 /bin
 *.deb
