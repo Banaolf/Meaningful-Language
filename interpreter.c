@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "parser.h"
 #include "lexer.h"
 #include <ctype.h>
