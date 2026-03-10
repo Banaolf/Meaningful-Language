@@ -13,6 +13,7 @@
 .installer/
 bin/
 build.cmd
+/bin
 run_tests.ps1 
 /scripts
 #Still developing the run_tests!
