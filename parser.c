@@ -35,6 +35,8 @@ char* tokenTypeToString(TokenType type){
         case TOKEN_DOT: return "TOKEN_DOT";
         case TOKEN_FLOAT: return "TOKEN_FLOAT";
         case TOKEN_UNARY: return "TOKEN_UNARY";
+        case TOKEN_AT: return "TOKEN_AT";
+        case TOKEN_DLRSIGN: return "TOKEN_DLRSIGN";
         case ERR: return "ERR";
         default: return "UNKNOWN";
     }
@@ -59,6 +61,7 @@ const char* keywords[] = {
     "as",
     "overwrite",
     "put",
+    "represent",
     NULL
 };
 
@@ -688,6 +691,14 @@ ASTNode* parseStatement() {
         advance(); // Eat 'print'
         ASTNode* expr = parseExpression();
         ASTNode* node = createNode(NODE_PRINT, "print");
+        node->right = expr;
+        return node;
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "represent", NULL)) {
+        advance(); // Eat 'represent'
+        ASTNode* expr = parseExpression();
+        ASTNode* node = createNode(NODE_REPRESENT, "represent");
         node->right = expr;
         return node;
     }

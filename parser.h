@@ -14,6 +14,7 @@ typedef enum {
     NODE_PROGRAM,
     NODE_RETURN,
     NODE_PRINT,
+    NODE_REPRESENT,
     NODE_IF,
     NODE_IMPORT,
     NODE_BREAK,

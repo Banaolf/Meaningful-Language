@@ -13,7 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.52.1"
+#define VERSION "ALPHA.0.99.53.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -545,6 +545,35 @@ void printValueRecursive(Value val) {
         printf("}");
     }
 }
+void printValueReprRecursive(Value val) { //Sorry for the repetition, I couldn't find any other more efficient way.
+    if (val.type == VAL_INT) printf("%d", val.as.number);
+    else if (val.type == VAL_NON) printf("non");
+    else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
+    else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("\"%s\"", AS_CSTRING(val));
+    else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
+    else if (IS_OBJ_TYPE(val, OBJ_LIST)) {
+        ValueList* list = AS_LIST(val);
+        printf("[");
+        for (int i = 0; i < list->count; i++) {
+            printValueReprRecursive(list->items[i]);
+            if (i < list->count - 1) printf(", ");
+        }
+        printf("]");
+    } else if (IS_OBJ_TYPE(val, OBJ_DICT)) {
+        ValueDict* dict = AS_DICT(val);
+        printf("{");
+        DictEntry *s, *tmp;
+        int i = 0;
+        int count = HASH_COUNT(dict->head);
+        HASH_ITER(hh, dict->head, s, tmp) {
+            printf("\"%s\": ", s->key);
+            printValueReprRecursive(s->value);
+            if (i < count - 1) printf(", ");
+            i++;
+        }
+        printf("}");
+    }
+}
 
 void printValue(Value val) {
     if (val.type == VAL_ERR) {return;}
@@ -553,6 +582,15 @@ void printValue(Value val) {
     printf("\n");
     fflush(stdout);
 }
+
+void printReprValue(Value val) {
+    if (val.type == VAL_ERR) {return;}
+    if (val.type == VAL_VOID) {return;}
+    printValueReprRecursive(val);
+    printf("\n");
+    fflush(stdout);
+}
+
 
 // Forward declaration
 char* readFile(const char* path);
@@ -1228,6 +1266,14 @@ Value evaluate(ASTNode* node) {
         Value val = evaluate(node->right);
         if (val.type == VAL_ERR) return val;
         printValue(val);
+        return make(VAL_VOID);
+    }
+
+    // 8.1 Native represent
+    if (node->type == NODE_REPRESENT) {
+        Value val = evaluate(node->right);
+        if (val.type == VAL_ERR) return val;
+        printReprValue(val);
         return make(VAL_VOID);
     }
 
