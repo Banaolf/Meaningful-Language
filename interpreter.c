@@ -1472,7 +1472,7 @@ Value evaluate(ASTNode* node) {
             if (result.type == VAL_ERR) return result;
             if (!IS_OBJ_TYPE(result, OBJ_STRING)) return throwException(TypeException, "TypeException: overwrite expects a string.\n");
             rewind(currentFile->file);
-            _chsize(fileno(currentFile->file), 0); // Clear the file (WINDOWS ONLY)
+            TRUNCATE_FILE(currentFile->file); // Clear the file (WINDOWS ONLY)
             fprintf(currentFile->file, "%s", AS_CSTRING(result));
 
         } else if (strcmp(node->value, "put") == 0) {
@@ -1688,11 +1688,11 @@ int main(int argc, char *argv[]) {
         return 0;
     } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0) {
         if (argc != 2) { printf("Usage: meaningful -src/--source"); return 3; }
-        system("start https://github.com/Banaolf/Meaningful-Language");
+        OPEN_URL("ttps://github.com/Banaolf/Meaningful-Language");
         return 0;
     } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0) {
         if (argc != 2) { printf("Usage: meaningful -lic/--licence"); return 3; }
-        system("start https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
+        OPEN_URL("https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
         return 0;
     } else if (strcmp(argv[1], "-t") == 0 || strcmp(argv[1], "--test") == 0) {
         if (argc != 3) { printf("Usage: meaningful -t/--test [name].mean"); return 3; }
