@@ -2,7 +2,19 @@
 #include "lexer.h"
 #include <ctype.h>
 #include <stddef.h>
-#include <io.h>
+#ifdef _WIN32
+    #include <io.h>
+    #define TRUNCATE_FILE(f) _chsize(fileno(f), 0)
+    #define OPEN_URL(url) system("start " url)
+#else
+    #include <unistd.h>
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #ifdef __APPLE__
+        #define OPEN_URL(url) system("open " url)
+    #else
+        #define OPEN_URL(url) system("xdg-open " url)
+    #endif
+#endif
 #include <stddef.h>
 #include <stdarg.h>
 
