@@ -26,7 +26,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.54.1"
+#define VERSION "ALPHA.0.99.54.2"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -1696,7 +1696,8 @@ void runREPL() {
             if (t.type != TOKEN_KEYWORD) continue;
             if (strcmp(t.value, "while")  == 0 ||
                 strcmp(t.value, "if")     == 0 ||
-                strcmp(t.value, "repeat") == 0) {
+                strcmp(t.value, "repeat") == 0 ||
+				strcmp(t.value, "forEach") == 0) {
                 depth++;
             } else if (strcmp(t.value, "set") == 0) {
                 if (i + 2 < probe->size &&
