@@ -65,6 +65,7 @@ const char* keywords[] = {
     "represent",
     "forEach",
     "in",
+    "do",
     NULL
 };
 
@@ -303,7 +304,7 @@ ASTNode* parsePostfixExpression() {
     }
     return node;
 }
-
+ASTNode* parseFunctionDefinition(char* name);
 ASTNode* parsePrimaryExpression() {
     if (is(ERR,0)){
         Token t = peek(0);
@@ -471,6 +472,11 @@ ASTNode* parsePrimaryExpression() {
             return NULL;
         }
         return node;
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "do", NULL)) {
+        advance();
+        return parseFunctionDefinition("_LAMBDA_");
     }
 
     throwVoid();

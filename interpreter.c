@@ -3,12 +3,17 @@
 #include <ctype.h>
 #include <stddef.h>
 #include <stdlib.h> 
+#include <sys/types.h>
+#include <time.h>
 #ifdef _WIN32
     #include <io.h>
+    #include <windows.h>
+    #define LSLEEPS(s) Sleep(ms * 1000)
     #define TRUNCATE_FILE(f) _chsize(fileno(f), 0)
     #define OPEN_URL(url) system("start " url)
 #else
     #include <unistd.h>
+    #define LSLEEPS(s) sleep(s);
     #ifdef __APPLE__
         #define OPEN_URL(url) system("open " url)
         #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
@@ -19,22 +24,17 @@
 #endif
 #include <stddef.h>
 #include <stdarg.h>
-
 #include <math.h>
 #include <stdbool.h>
-#include <time.h>
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
 #define VERSION "ALPHA.0.99.54.2"
 //Licenced under BMLL2.0, see LICENCE for further info
-
 // --- GC, Value, and Object System ---
-
 // Forward declarations for our types
 typedef struct Object Object;
 typedef struct Value Value;
-
 typedef enum {
     VAL_INT,
     VAL_VOID,
@@ -46,16 +46,6 @@ typedef enum {
     VAL_NON,
     VAL_FUNCTION
 } ValueType;
-
-typedef enum {
-    list,
-    string,
-    integer,
-    Float,
-    dict,
-    file,
-    function
-} AllTypes;
 
 typedef enum {
     OBJ_STRING,
@@ -185,10 +175,20 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
 
 // --- Garbage Collector ---
 
+void collectGarbage();
+
 Object* allObjects = NULL; 
+int bytesAllocated;
+int nextGC = 1024 * 1024; //1MB
 
 static Object* allocateObject(size_t size, ObjectType type) {
     Object* object = (Object*)malloc(size);
+    bytesAllocated += size;
+    if (bytesAllocated > nextGC) {
+        collectGarbage();
+        nextGC = bytesAllocated * 2;
+        if (nextGC < 1024 * 1024) nextGC = 1024 * 1024;
+    }
     if (object == NULL) {
         fprintf(stderr, "Out of memory\n");
         exit(1);
@@ -252,6 +252,75 @@ void markObject(Object* object) {
     }
 }
 
+ObjFile* currentFile;
+
+static void freeObject(Object* object) {
+    switch (object->type) {
+        case OBJ_STRING: {
+            ObjString* s = (ObjString*)object;
+            bytesAllocated -= sizeof(ObjString) + s->length + 1;
+            free(object);
+            break;
+        }
+        case OBJ_LIST: {
+            ValueList* list = (ValueList*)object;
+            bytesAllocated -= sizeof(ValueList) + sizeof(Value) * list->capacity;
+            free(list->items);
+            free(list);
+            break;
+        }
+        case OBJ_DICT: {
+            ValueDict* dict = (ValueDict*)object;
+            bytesAllocated -= sizeof(ValueDict);
+            DictEntry *s, *tmp;
+            HASH_ITER(hh, dict->head, s, tmp) {
+                bytesAllocated -= sizeof(DictEntry) + strlen(s->key) + 1;
+                HASH_DEL(dict->head, s);
+                free(s->key);
+                free(s);
+            }
+            free(dict);
+            break;
+        }
+        case OBJ_FILE: {
+            ObjFile* file = (ObjFile*)object;
+            bytesAllocated -= sizeof(ObjFile);
+            if (file->isOpen && file->file != NULL) { fclose(file->file); file->isOpen = false; }
+            file->file = NULL;
+            if (file->path != NULL) { bytesAllocated -= strlen(file->path) + 1; free(file->path); file->path = NULL; }
+            if (file->contents != NULL) { bytesAllocated -= strlen(file->contents) + 1; free(file->contents); file->contents = NULL; }
+            free(file);
+            break;
+        }
+    }
+}
+
+void sweep() {
+    Object* previous = NULL;
+    Object* object = allObjects;
+    while (object != NULL) {
+        if (object->isMarked) {
+            object->isMarked = false; // Unmark for next cycle
+            previous = object;
+            object = object->next;
+        } else {
+            Object* unreached = object;
+            object = object->next;
+            if (previous != NULL) {
+                previous->next = object;
+            } else {
+                allObjects = object;
+            }
+            freeObject(unreached);
+        }
+    }
+}
+void markRoots();
+void collectGarbage() {
+    markRoots();
+    sweep();
+}
+
 void markValue(Value value) {
     if (IS_OBJECT(value)) {
         markObject(AS_OBJECT(value));
@@ -276,6 +345,18 @@ typedef struct Scope {
 } Scope;
 
 Scope* currentScope = NULL; // Head of scope stack
+
+void markRoots() {
+    Scope* scope = currentScope;
+    while (scope) {
+        Symbol *s, *tmp;
+        HASH_ITER(hh, scope->symbols, s, tmp) {
+            markValue(s->value);
+            // Note: We don't need to mark s->funcNode as it's part of the AST, not a GC'd object.
+        }
+        scope = scope->prev;
+    }
+}
 
 // Helper: Get variable value from the stack (Scope)
 Value getVariable(char* name) {
@@ -314,7 +395,7 @@ void setVariable(char* name, Value val) {
     sym->nativeFunc = NULL;
     HASH_ADD_STR(currentScope->symbols, name, sym);
 }
-
+Value currentSelf;
 // Helper: Define a function in the symbol table
 void defineFunction(char* name, ASTNode* node) {
     Symbol* sym = malloc(sizeof(Symbol));
@@ -447,18 +528,6 @@ Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
     return result;
 }
 
-void markRoots() {
-    Scope* scope = currentScope;
-    while (scope) {
-        Symbol *s, *tmp;
-        HASH_ITER(hh, scope->symbols, s, tmp) {
-            markValue(s->value);
-            // Note: We don't need to mark s->funcNode as it's part of the AST, not a GC'd object.
-        }
-        scope = scope->prev;
-    }
-}
-
 void freeSymbolTable() {
     while (currentScope) {
         Scope* scopeToFree = currentScope;
@@ -472,74 +541,6 @@ void freeSymbolTable() {
         }
         free(scopeToFree);
     }
-}
-
-ObjFile* currentFile;
-
-static void freeObject(Object* object) {
-    switch (object->type) {
-        case OBJ_STRING:
-            free(object); // ObjString is a single allocation
-            break;
-        case OBJ_LIST: {
-            ValueList* list = (ValueList*)object;
-            free(list->items); // Free the items array
-            free(list);        // Free the list struct itself
-            break;
-        }
-        case OBJ_DICT: {
-            ValueDict* dict = (ValueDict*)object;
-            DictEntry *s, *tmp;
-            HASH_ITER(hh, dict->head, s, tmp) {
-                HASH_DEL(dict->head, s);
-                free(s->key); // Free the strdup'd key
-                free(s);      // Free the DictEntry struct
-            }
-            free(dict); // Free the dict container
-            break;
-        }
-        case OBJ_FILE: {
-            ObjFile* file = (ObjFile*)object;
-            if (file->isOpen && file->file != NULL) {fclose(file->file); file->isOpen = false;}
-            file->file = NULL;
-            if (file->path != NULL) {
-                free(file->path);
-                file->path = NULL;
-            }
-            if (file->contents != NULL) { // If the contents are already NULL means it was never assigned meaning no need to free it.
-                free(file->contents);
-                file->contents = NULL;
-            }
-            free(file);
-            break;
-        }
-    }
-}
-
-void sweep() {
-    Object* previous = NULL;
-    Object* object = allObjects;
-    while (object != NULL) {
-        if (object->isMarked) {
-            object->isMarked = false; // Unmark for next cycle
-            previous = object;
-            object = object->next;
-        } else {
-            Object* unreached = object;
-            object = object->next;
-            if (previous != NULL) {
-                previous->next = object;
-            } else {
-                allObjects = object;
-            }
-            freeObject(unreached);
-        }
-    }
-}
-
-void collectGarbage() {
-    markRoots();
-    sweep();
 }
 
 void printValueRecursive(Value val) {
@@ -704,7 +705,7 @@ bool checkType(char* notation, Value val) {
     if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
     if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
     if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
-    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; // how the hell do i do this?
+    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; 
     //Note: Handle @optional elsewhere
     return false;
 }
@@ -1013,6 +1014,13 @@ Value evaluate(ASTNode* node) {
 
     // 5. Function Definitions
     if (node->type == NODE_FUNCTION_DEF) {
+        if (strcmp(node->value, "_LAMBDA_") == 0) {
+            Symbol* sym = malloc(sizeof(Symbol));
+            sym->name = strdup("_LAMBDA_");
+            sym->funcNode = node;
+            sym->nativeFunc = NULL;
+            return make(VAL_FUNCTION, sym);
+        }
         defineFunction(node->value, node);
         return make(VAL_VOID);
     }
@@ -1156,8 +1164,17 @@ Value evaluate(ASTNode* node) {
         // --- Dict methods ---
         } else if (IS_OBJ_TYPE(obj, OBJ_DICT)) {
             ValueDict* dict = AS_DICT(obj);
-
-            if (strcmp(method, "has") == 0) {
+            
+            DictEntry* entry;
+            HASH_FIND_STR(dict->head, method, entry);
+            if (entry && entry->value.type == VAL_FUNCTION) {
+                Value prevSelf = currentSelf;
+                currentSelf = obj;
+                result = callSymbol(entry->value.as.func, argCount, argValues);
+                currentSelf = prevSelf;
+                free(argValues);
+                return result;
+            } else if (strcmp(method, "has") == 0) {
                 if (argCount != 1 || !IS_OBJ_TYPE(argValues[0], OBJ_STRING)) { free(argValues); return throwException(ArgumentException, "ArgumentException: has() takes 1 string argument.\n"); }
                 DictEntry* entry;
                 HASH_FIND_STR(dict->head, AS_CSTRING(argValues[0]), entry);
@@ -1183,7 +1200,6 @@ Value evaluate(ASTNode* node) {
                 free(argValues);
                 return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Dict has no method '%s'.\n", method);
             }
-
         } else if (IS_OBJ_TYPE(obj, OBJ_FILE)) { // File Methods
             ObjFile* file = (ObjFile*)AS_OBJECT(obj);
 
@@ -1610,7 +1626,7 @@ Value native_length(int argc, Value* args) {
 }
 
 Value native_none(int argCount, Value* args) {
-    if (argCount == 0) return make(VAL_INT, 0);
+    if (argCount == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argCount; i++) {
         if (!is_falsy(args[i])) return make(VAL_INT, 0);
     }
@@ -1618,7 +1634,7 @@ Value native_none(int argCount, Value* args) {
 }
 
 Value native_all(int argc, Value* args) {
-    if (argc == 0) return make(VAL_INT, 0);
+    if (argc == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argc; i++) {
         if (is_falsy(args[i])) return make(VAL_INT, 0);
     }
@@ -1626,11 +1642,44 @@ Value native_all(int argc, Value* args) {
 }
 
 Value native_any(int argc, Value* args) {
-    if (argc == 0) return make(VAL_INT, 0);
+    if (argc == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argc; i++) {
         if (!is_falsy(args[i])) return make(VAL_INT, 1);
     }
     return make(VAL_INT, 0);
+}
+
+Value native_GCCOLL(int argc, Value* args) {
+    printf("WARNING: Collecting garbage manually called.");
+    collectGarbage();
+    return make(VAL_VOID);
+}
+
+Value native_random(int argc, Value* args) {
+    int min = 0; int max = 255;
+    if (argc == 1) {
+        if (args[0].type != VAL_INT && args[0].type != VAL_FLOAT) return throwException(ArgumentException, "ArgumentException: random() expects either integers or floats.");
+        max = args[0].type == VAL_INT ? args[0].as.number : args[0].as.decimal;
+        return make(VAL_INT, rand() % (max - min + 1)+min);
+    } else if (argc == 2) {
+        if (args[0].type != VAL_INT && args[0].type != VAL_FLOAT) return throwException(ArgumentException, "ArgumentException: random() expects either integers or floats.");
+        if (args[1].type != VAL_INT && args[1].type != VAL_FLOAT) return throwException(ArgumentException, "ArgumentException: random() expects either integers or floats.");
+        max = args[0].type == VAL_INT ? args[0].as.number : args[0].as.decimal;
+        min = args[1].type == VAL_INT ? args[1].as.number : args[1].as.decimal;
+        return make(VAL_INT, rand() % (max - min + 1)+min);
+    } else if (argc > 2) return throwException(ArgumentException, "ArgumentException: random() takes either (max, min), (max)");
+    return make(VAL_INT, rand() % (max - min + 1) + min);
+}
+
+Value native_sleep(int argc, Value* args) {
+    if (argc != 1) return throwException(ArgumentException, "ArgumentException: sleep() requires 1 parameter");
+    int seconds;
+    if (args[0].type != VAL_INT) {
+        if (args[0].type == VAL_FLOAT) seconds = (int)floor(args[0].as.decimal);
+        else return throwException(ArgumentException, "ArgumentException: sleep() expects seconds to be either a float (rounded down) or an integer");
+    } else seconds = args[0].as.number;
+    LSLEEPS(seconds);
+    return make(VAL_VOID);
 }
 
 // --- Initialization ---
@@ -1642,12 +1691,15 @@ void initNatives() {
     defineNative("all", native_all);
     defineNative("any", native_any);
     defineNative("none", native_none);
+    defineNative("_GCCOLLECT_", native_GCCOLL);
+    defineNative("random", native_random);
 }
 
 void initSymbolTable() {
     currentScope = malloc(sizeof(Scope));
     currentScope->symbols = NULL;
     currentScope->prev = NULL;
+    currentSelf = make(VAL_VOID);
 }
 
 char* readFile(const char* path) {
