@@ -26,7 +26,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "ALPHA.0.99.53.2"
+#define VERSION "ALPHA.0.99.54.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 
 // --- GC, Value, and Object System ---
@@ -1254,7 +1254,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_OBJECT, (Object*)dict);
     }
 
-    // Index Access
+    // 6.3 Index Access
     if (node->type == NODE_INDEX_ACCESS) {
         Value collection = evaluate(node->left);
         if (collection.type == VAL_ERR) return collection;
@@ -1370,7 +1370,49 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 10. Import
+    // 10 For Each loops
+    if (node->type == NODE_FOREACH) {
+        char* nameLeft = node->children[0]->left->value;
+        Value inRight = evaluate(node->children[0]->right);
+        if (inRight.type == VAL_ERR) return inRight;
+
+        if (!IS_OBJECT(inRight)) return throwException(TypeException, "TypeException: Foreach requires an object-like value to iter with (string, list, dict)");
+        if (IS_OBJ_TYPE(inRight, OBJ_DICT)) {
+            DictEntry *el, *tmp;
+            HASH_ITER(hh, AS_DICT(inRight)->head, el, tmp) {
+                enterScope();
+                defineVariable(nameLeft, make(VAL_OBJECT, (Object*)allocateString(el->key, strlen(el->key))));
+                Value body = evaluate(node->children[1]);
+                if (body.type == VAL_ERR || body.type == VAL_RETURN) { exitScope(); return body; }
+                if (body.type == VAL_BREAK){ exitScope(); break; }
+                exitScope();
+            }
+        } else if (IS_OBJ_TYPE(inRight, OBJ_STRING)) {
+            for (int I = 0; I < AS_STRING(inRight)->length; I++) {
+                enterScope();
+                char ch[2] = { AS_CSTRING(inRight)[I], '\0' };
+                defineVariable(nameLeft, make(VAL_OBJECT, (Object*)allocateString(ch, 1)));
+                Value body = evaluate(node->children[1]);
+        	    if (body.type == VAL_ERR || body.type == VAL_RETURN) { exitScope(); return body; }
+                if (body.type == VAL_BREAK){ exitScope(); break; }
+                exitScope();
+            }
+        } else if (IS_OBJ_TYPE(inRight, OBJ_LIST)) {
+            for (int I = 0; I < AS_LIST(inRight)->count; I++) {
+                enterScope();
+                defineVariable(nameLeft, AS_LIST(inRight)->items[I]);
+                Value body = evaluate(node->children[1]);
+                if (body.type == VAL_ERR || body.type == VAL_RETURN) { exitScope(); return body; }
+                if (body.type == VAL_BREAK){ exitScope(); break; }
+                exitScope();
+            }
+        } else if (IS_OBJ_TYPE(inRight, OBJ_FILE)) {
+			return throwException(NotImplementedException, "NotImplementedException: File iteration isn't available yet.");
+		}
+        return make(VAL_VOID);
+    }
+
+    // 11. Import
     if (node->type == NODE_IMPORT) {
         Value pathVal = evaluate(node->right);
         if (pathVal.type == VAL_ERR) return pathVal;
@@ -1413,12 +1455,12 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 11. Break
+    // 12. Break
     if (node->type == NODE_BREAK) {
         return make(VAL_BREAK);
     }
 
-    // 12. Readfile (builtin I/O)
+    // 13. Readfile (builtin I/O)
     if (node->type == NODE_READFILE) {
         Value valPath = evaluate(node->children[0]);
         if (valPath.type == VAL_ERR) return valPath;
@@ -1482,7 +1524,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 12.1 File interactions
+    // 13.1 File interactions
     if (node->type == NODE_FILE_INTERACTION) {
         if (strcmp(node->value, "overwrite") == 0) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
@@ -1503,7 +1545,7 @@ Value evaluate(ASTNode* node) {
         }
     }
 
-    // 13. Command Execution
+    // 14. Command Execution
     if (node->type == NODE_CMD) {
         Value cmd = evaluate(node->right);
         if (cmd.type == VAL_ERR) return cmd;
@@ -1512,7 +1554,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_INT, result);
     }
 
-    // 14. Program / Block Execution
+    // 15. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {

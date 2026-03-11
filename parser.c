@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <time.h>
 //Licenced under BMLL2.0, see LICENSE for further info
 int currentIndex = 0;
 int scopeLevel = 0;
@@ -62,6 +63,8 @@ const char* keywords[] = {
     "overwrite",
     "put",
     "represent",
+    "forEach",
+    "in",
     NULL
 };
 
@@ -711,42 +714,34 @@ ASTNode* parseStatement() {
         return node;
     }
 
-    if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
-        advance(); // Eat else
-        if (!_is(TOKEN_KEYWORD, 0, "end", "print", "set", "while", "repeat", "if", "return", "break", "Import", "readfile", "overwrite", "put", NULL) && !is(TOKEN_EOF, 0) && !is(TOKEN_SEMICOLON, 0)) {
-            // Hardcoded because I couldn't find a more efficient way
-            ASTNode* cond = parseExpression();
-            ASTNode* node = createNode(NODE_ELSE, "else");
-            addChild(node, cond);
-            
-            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
-            addChild(node, body);
-            if (is(TOKEN_SEMICOLON, 0)) advance();
-            while (!is(TOKEN_EOF, 0)) {
-                if (parserError) break;
-                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
-                ASTNode* stmt = parseStatement();
-                if (stmt) addChild(body, stmt);
-                else if (!parserError) advance();
+    if (_is(TOKEN_KEYWORD, 0, "forEach", NULL)) {
+        advance();
+        Token varTkn = peek(0);
+        ASTNode* varDef = createNode(NODE_VARIABLE, varTkn.value);
+        ASTNode* node = createNode(NODE_FOREACH, "forEach");
+        if (!_is(TOKEN_KEYWORD, 0, "in", NULL)) {throw(TOKEN_KEYWORD); return NULL;}
+        ASTNode* inNode = createNode(NODE_IN, "in"); advance();
+        if (!is(TOKEN_IDENTIFIER, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
+        ASTNode* varGet = parseExpression();
+        inNode->left = varDef; inNode->right = varGet;
+        addChild(node, inNode);
+        ASTNode* body = createNode(NODE_PROGRAM, "BODY");
+        addChild(node, body);
+        if (is(TOKEN_SEMICOLON, 0)) {advance();}
+        while (!is(TOKEN_EOF, 0)) {
+            if (parserError) break;
+            if (_is(TOKEN_KEYWORD, 0, "end", NULL)) {
+                advance();
+                break;
             }
-            return node;
-        } else {
-            ASTNode* node = createNode(NODE_ELSE, "else");
-            
-            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
-            addChild(node, body);
-            if (is(TOKEN_SEMICOLON, 0)) advance();
-            while (!is(TOKEN_EOF, 0)) {
-                if (parserError) break;
-                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
-                ASTNode* stmt = parseStatement();
-                if (stmt) addChild(body, stmt);
-                else if (!parserError) advance();
+            ASTNode* stmt = parseStatement();
+            if (stmt) {
+                addChild(body, stmt);
+            } else if (!parserError) {
+                advance();
             }
-            return node;
         }
+        return node;
     }
 
     if (_is(TOKEN_KEYWORD, 0, "repeat", NULL)){
@@ -796,6 +791,44 @@ ASTNode* parseStatement() {
             }
         }
         return node;
+    }
+
+    if (_is(TOKEN_KEYWORD, 0, "else", NULL)) {
+        advance(); // Eat else
+        if (!_is(TOKEN_KEYWORD, 0, "end", "print", "set", "while", "repeat", "if", "return", "break", "Import", "readfile", "overwrite", "put", NULL) && !is(TOKEN_EOF, 0) && !is(TOKEN_SEMICOLON, 0)) {
+            // Hardcoded because I couldn't find a more efficient way
+            ASTNode* cond = parseExpression();
+            ASTNode* node = createNode(NODE_ELSE, "else");
+            addChild(node, cond);
+            
+            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
+            addChild(node, body);
+            if (is(TOKEN_SEMICOLON, 0)) advance();
+            while (!is(TOKEN_EOF, 0)) {
+                if (parserError) break;
+                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
+                ASTNode* stmt = parseStatement();
+                if (stmt) addChild(body, stmt);
+                else if (!parserError) advance();
+            }
+            return node;
+        } else {
+            ASTNode* node = createNode(NODE_ELSE, "else");
+            
+            ASTNode* body = createNode(NODE_PROGRAM, "ELSE_BODY");
+            addChild(node, body);
+            if (is(TOKEN_SEMICOLON, 0)) advance();
+            while (!is(TOKEN_EOF, 0)) {
+                if (parserError) break;
+                if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
+                ASTNode* stmt = parseStatement();
+                if (stmt) addChild(body, stmt);
+                else if (!parserError) advance();
+            }
+            return node;
+        }
     }
 
     if (_is(TOKEN_KEYWORD, 0, "while", NULL)) {
