@@ -246,6 +246,23 @@ print result
 
 Functions create their own scope. Variables defined inside a function are not accessible outside it.
 
+### Lambdas
+
+Functions without a name, generally used for adding methods to dictionaries, which mimick classes.
+
+```meaningful
+set RedApple {
+  "green": false,
+  "makeGreen": do(x@bool)
+    self.green = x
+  end, ::Or also do(x@bool); self.green = x; end,
+  "hasAWorm": false,
+  "changeWormState": do(x@bool); self.hasAWorm = x; end
+}
+RedApple.makeGreen(true)
+print RedApple.green
+```
+
 ---
 
 ## 8. Data Structures
