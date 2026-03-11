@@ -264,8 +264,22 @@ TokenStream* lex(char* source) {
             char buffer[256] = {0};
             int i = 0;
             while (*c != '"' && *c != '\0') {
+                if (*c == '\\') {
+                    c++; // skip backslash
+                    switch (*c) {
+                        case 'n':  buffer[i++] = '\n'; break;
+                        case 't':  buffer[i++] = '\t'; break;
+                        case 'r':  buffer[i++] = '\r'; break;
+                        case '\\': buffer[i++] = '\\'; break;
+                        case '"':  buffer[i++] = '"';  break;
+                        case '0':  buffer[i++] = '\0'; break;
+                        default: printf("[LEXER] SyntaxException: Unknown escape sequence '\\%c'. Line: %d\n", *c, line); addToken(stream, ERR, "ESCAPE"); break;
+                    }
+                } else {
+                    buffer[i++] = *c;
+                }
                 character++;
-                buffer[i++] = *c++;
+                c++;
             }
             if (*c == '"') c++; // Skip closing quote
             addToken(stream, TOKEN_STRING, buffer);

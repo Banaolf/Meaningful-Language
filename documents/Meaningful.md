@@ -33,16 +33,16 @@ meaningful script.mean
 
 Meaningful supports the following core data types:
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **Integer** | Whole numbers | `42`, `-10` |
-| **Float** | Decimal numbers | `3.14`, `0.01` |
-| **String** | Text enclosed in double quotes | `"Hello World"` |
-| **Boolean** | Logical truth values (stored as 1/0) | `true`, `false` |
-| **Non** | Represents the absence of a value (Null/Void) | `non` |
-| **List** | Ordered collection of values | `[1, 2, "three"]` |
-| **Dict** | Key-value pairs (keys must be strings) | `{"name": "John", "age": 30}` |
-
+| Type        | Description                                                  | Example                           |
+| -------------| --------------------------------------------------------------| -----------------------------------|
+| **Integer** | Whole numbers                                                | `42`, `-10`                       |
+| **Float**   | Decimal numbers                                              | `3.14`, `0.01`                    |
+| **String**  | Text enclosed in double quotes                               | `"Hello World"`                   |
+| **Boolean** | Logical truth values (stored as 1/0)                         | `true`, `false`                   |
+| **Non**     | Represents the absence of a value (Null/Void)                | `non`                             |
+| **List**    | Ordered collection of values                                 | `[1, 2, "three"]`                 |
+| **Dict**    | Key-value pairs (keys must be strings)                       | `{"name": "John", "age": 30}`     |
+| **File**    | A file instance that contains its path(when closed and open) | `readfile "C:\\that.txt" as file` |
 ---
 
 ## 3. Variables and Assignment
