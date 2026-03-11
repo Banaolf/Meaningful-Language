@@ -11,7 +11,7 @@ all: $(TARGET)
 
 $(TARGET): $(MAIN_OBJ) $(LIB_NAME)
 	$(CC) $(CFLAGS) -o $(TARGET) $(MAIN_OBJ) -L. -lcore -lm
-	rm -f *.o *.a
+	del -f *.o *.a
 
 $(LIB_NAME): $(LIB_OBJS)
 	$(AR) $(ARFLAGS) $(LIB_NAME) $(LIB_OBJS)
@@ -26,6 +26,6 @@ interpreter.o: interpreter.c parser.h lexer.h
 	$(CC) $(CFLAGS) -c interpreter.c
 
 clean:
-	rm -f bin/meaningful *.o *.a
+	del -f bin/meaningful *.o *.a
 
 .PHONY: all clean
