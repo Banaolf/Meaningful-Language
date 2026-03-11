@@ -1,5 +1,5 @@
 # Meaningful Language Documentation
-**Version**: ALPHA.0.99.49.2 **License**: BMLL 2.0
+**Version**: ALPHA.0.99.54.2 **License**: BMLL 2.0
 
 Meaningful is an interpreted, dynamically typed language written in C. It features garbage collection, a REPL, and support for complex data structures like lists and dictionaries.
 
@@ -63,6 +63,18 @@ x -= 5
 x *= 2
 x /= 2
 ```
+
+### Type Conversion
+
+Variables can also be changed types when needed. Use @ for this.
+
+```meaningful
+set i = "0"
+i = i@int :: Convert i into an int, as long as its valid.
+represent i ::Should print just a 0
+```
+
+Note that conversion from dictionaries and lists to either floats or ints just gives the lengths of the object.
 
 ---
 
@@ -184,6 +196,23 @@ if v isnt 0
 end
 ```
 
+### ForEach
+
+For each allows you to iterate through objects, like this:
+
+```meaningful
+set str = "Hello, World!"
+forEach character in str
+  if character.isSpace() ::Still treated as strings
+    print "Just a space"
+  else character.isAlphabetical()
+    print "Its alphabetical"
+  else character.isDigit()
+    print "Its a digit!"
+  end
+end
+```
+
 ---
 
 ## 7. Functions
@@ -195,6 +224,14 @@ Functions are defined using `set` followed by a name and parentheses.
 ```meaningful
 set add(a, b)
     return a + b
+end
+```
+
+You can also check the type of the argument and add a little condition. Plans on letting the user add their own conditions exist.
+
+```meaningful
+set divide(a@int, b@int:not_zero)
+    return a / b
 end
 ```
 
@@ -314,7 +351,7 @@ It spans multiple lines.
 - **Semicolons** `;` are optional statement terminators.
 - **Booleans** `true` and `false` are stored internally as `1` and `0`.
 - **`non`** represents the absence of a value (similar to null/nil/None in other languages).
-- **`end`** closes `if`, `while`, `repeat`, and function definition blocks.
+- **`end`** closes `if`, `while`, `repeat`, `readfile`, function definition blocks, and more.
 
 ---
 

@@ -79,7 +79,7 @@ TokenStream* lex(char* source) {
                 while (*c != '\0' && *c != '\n'){if(*c == '\n')line++;character++;c++;} // COMMENTS!!
                 continue;
             } else if (*(c+1) == ';'){
-                while (*c != '\0' && (*c == ';' && *(c+1) == ':')){if(*c == '\n')line++;character++;c++;} // BLOCK COMMENTS!!
+                while (*c != '\0' && !(*c == ';' && *(c+1) == ':')){if(*c == '\n')line++;character++;c++;} // BLOCK COMMENTS!!
                 if(*c == '\0'){printf("[LEXER] WARN: block comment reaches end of file!");c+=2;}
                 continue;
             } else {
@@ -285,7 +285,7 @@ TokenStream* lex(char* source) {
         }
 
         addToken(stream, ERR, "UNKNOWN");
-        c++; //Add to not infinite-loop.
+        c++;
     }
 
     addToken(stream, TOKEN_EOF, "EOF");
