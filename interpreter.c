@@ -7,8 +7,10 @@
 #include <time.h>
 #ifdef _WIN32
     #include <io.h>
-    #include <windows.h>
-    #define LSLEEPS(s) Sleep(ms * 1000)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h> //Windows is currently broken, fix not available yet.
+    #undef TokenType
+    #define LSLEEPS(s) Sleep(s * 1000)
     #define TRUNCATE_FILE(f) _chsize(fileno(f), 0)
     #define OPEN_URL(url) system("start " url)
 #else
