@@ -1831,6 +1831,21 @@ int main(int argc, char *argv[]) {
         free(src);
         returningVal = 0;
         goto end_of_interpreter;
+    } else if (strcmp(argv[1], "--check") == 0 || strcmp(argv[1], "-c") == 0) {
+        if (argc != 3) { printf("Usage: meaningful --check [name].mean"); return 3; }
+        char* src = readFile(argv[2]);
+        if (strcmp(src, "") == 0) exit(2);
+        TokenStream* stream = lex(src);
+        ASTNode* root = parseFile(*stream);
+        finalCleanup(stream);
+        free(src);
+        if (root) {
+            freeAST(root);
+            printf("OK\n");
+            return 0;
+        } else {
+            return 5; // parser error exit code
+        }
     } else {
         char* src = readFile(argv[1]);
         if (strcmp(src, "") == 0) exit(2);

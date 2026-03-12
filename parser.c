@@ -13,6 +13,7 @@ int scopeLevel = 0;
 TokenStream* globalStream;
 
 int parserError = 0;
+int checkMode = 0;
 
 char* tokenTypeToString(TokenType type){
     switch (type) {
@@ -113,14 +114,15 @@ TokenType get(int ind) {
 
 void throwVoid(){
     Token errorToken = peek(0);
-    printf("[PARSER]At line %d, character %d: Unexpected token: %s", errorToken.ln, errorToken.character, tokenTypeToString(get(0)));
+    if (checkMode) fprintf(stderr, "ERROR:%d:%d:UnexpectedToken", errorToken.ln, errorToken.character);
+    else {fprintf(stderr,"[PARSER]At line %d, character %d: Unexpected token: %s", errorToken.ln, errorToken.character, tokenTypeToString(get(0))); printf("[PARSER]At line %d, character %d: Unexpected token: %s", errorToken.ln, errorToken.character, tokenTypeToString(get(0)));}
     parserError = 1;
-    exit(1); //Made to avoid endless loops, replacement when available.
 }
 
 void throw(TokenType expected){
     Token errorToken = peek(0);
-    fprintf(stderr, "[PARSER]At line %d, character %d: Expected %s, got %s\n", errorToken.ln, errorToken.character, tokenTypeToString(expected), tokenTypeToString(errorToken.type));
+    if (checkMode) fprintf(stderr, "ERROR:%d:%d:EXPECTED%s", errorToken.ln, errorToken.character, tokenTypeToString(expected));
+    else {fprintf(stderr, "[PARSER]At line %d, character %d: Expected %s, got %s\n", errorToken.ln, errorToken.character, tokenTypeToString(expected), tokenTypeToString(errorToken.type));printf("[PARSER]At line %d, character %d: Expected %s, got %s\n", errorToken.ln, errorToken.character, tokenTypeToString(expected), tokenTypeToString(errorToken.type));}
     parserError = 1;
 }
 
@@ -130,13 +132,16 @@ void throwMultiple(int expectedCount, ...){
     va_start(args, expectedCount);
     for (int i = 0; i < expectedCount; i++) {
         TokenType expected = va_arg(args, TokenType);
-        if (i > 0) {printf("\n or \n");}
-        printf("%s", tokenTypeToString(expected));
+        if (i > 0) {
+            if (!checkMode) {fprintf(stderr, "\n or \n");printf("\n or \n");}
+            else fprintf(stderr, "\n");
+        }
+        if (checkMode) {fprintf(stderr, "ERROR:%d:%d:EXPECTEDMULTIPLE:\n", peek(0).ln, peek(0).character);fprintf(stderr, "%s", tokenTypeToString(expected));}
+        if (!checkMode) printf("%s", tokenTypeToString(expected));
     }
     va_end(args);
-    printf("\n, got %s.", tokenTypeToString(got));
+    if (!checkMode) fprintf(stderr, "\n, got %s", tokenTypeToString(got)); printf("\n, got %s.", tokenTypeToString(got));
     parserError = 1;
-    exit(1); //Made to avoid endless loops, replacement when available.
 }
 
 void advance() {
