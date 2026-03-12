@@ -15,8 +15,5 @@ bin/
 build.cmd
 /bin
 *.deb
-run_tests.ps1 
-/scripts
-#Still developing the run_tests!
+run_tests.ps1
 makefile
-#Note that this makefile without a . is my makefile, that is why its added here.
