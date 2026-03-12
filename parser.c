@@ -133,15 +133,16 @@ void throwMultiple(int expectedCount, ...){
     for (int i = 0; i < expectedCount; i++) {
         TokenType expected = va_arg(args, TokenType);
         if (i > 0) {
-            if (!checkMode) {fprintf(stderr, "\n or \n");printf("\n or \n");}
+            if (!checkMode) { fprintf(stderr, "\n or \n"); printf("\n or \n"); }
             else fprintf(stderr, "\n");
         }
-        if (checkMode) {fprintf(stderr, "ERROR:%d:%d:EXPECTEDMULTIPLE:\n", peek(0).ln, peek(0).character);fprintf(stderr, "%s", tokenTypeToString(expected));}
-        if (!checkMode) printf("%s", tokenTypeToString(expected));
+        if (checkMode) fprintf(stderr, "ERROR:%d:%d:EXPECTEDMULTIPLE\n", peek(0).ln, peek(0).character);
+        else { fprintf(stderr, "%s", tokenTypeToString(expected)); printf("%s", tokenTypeToString(expected)); }
     }
     va_end(args);
-    if (!checkMode) fprintf(stderr, "\n, got %s", tokenTypeToString(got)); printf("\n, got %s.", tokenTypeToString(got));
+    if (!checkMode) { fprintf(stderr, "\n, got %s", tokenTypeToString(got)); printf("\n, got %s.", tokenTypeToString(got)); }
     parserError = 1;
+    exit(1);
 }
 
 void advance() {
