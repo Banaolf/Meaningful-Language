@@ -5,22 +5,53 @@
 #include <stdlib.h> 
 #include <sys/types.h>
 #include <time.h>
-#ifdef _WIN32
+
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
     #include <io.h>
-    __declspec(dllimport) void __stdcall Sleep(unsigned long dwMilliseconds);
+    #include <windows.h>
     #define LSLEEPS(s) Sleep((unsigned long)(s) * 1000)
-    #define TRUNCATE_FILE(f) _chsize(fileno(f), 0)
+    #define TRUNCATE_FILE(f) _chsize(_fileno(f), 0)
     #define OPEN_URL(url) system("start " url)
-#else
+#elif defined(__APPLE__) && defined(__MACH__)
     #include <unistd.h>
-    #define LSLEEPS(s) sleep(s);
-    #ifdef __APPLE__
+    #include <TargetConditionals.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #if TARGET_OS_IPHONE
+        #define OPEN_URL(url) (void)0 
+    #else
         #define OPEN_URL(url) system("open " url)
-        #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
-    #elif __linux__
-        #define OPEN_URL(url) system("xdg-open " url)
-        #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #endif
+#elif defined(__ANDROID__)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("am start -a android.intent.action.VIEW -d " url)
+#elif defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("xdg-open " url " || sensible-browser " url " || x-www-browser " url)
+#elif defined(__sun) && defined(__SVR4)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("/usr/dt/bin/sdtwebclient " url)
+#elif defined(_AIX)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("defaultbrowser " url)
+#elif defined(__HAIKU__)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("open " url)
+#elif defined(__hpux) || defined(__sgi) || defined(__osf__)
+    #include <unistd.h>
+    #define LSLEEPS(s) sleep(s)
+    #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
+    #define OPEN_URL(url) system("firefox " url " &")
 #endif
 #include <stddef.h>
 #include <stdarg.h>
