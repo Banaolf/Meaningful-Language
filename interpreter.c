@@ -8,7 +8,7 @@
 
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
     #include <io.h>
-    #include <windows.h>
+    __declspec(dllimport) void __stdcall Sleep(unsigned long dwMilliseconds);
     #define LSLEEPS(s) Sleep((unsigned long)(s) * 1000)
     #define TRUNCATE_FILE(f) _chsize(_fileno(f), 0)
     #define OPEN_URL(url) system("start " url)
