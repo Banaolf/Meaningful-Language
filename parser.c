@@ -723,6 +723,7 @@ ASTNode* parseStatement() {
     if (_is(TOKEN_KEYWORD, 0, "forEach", NULL)) {
         advance();
         Token varTkn = peek(0);
+        advance(); //eat varTkn
         ASTNode* varDef = createNode(NODE_VARIABLE, varTkn.value);
         ASTNode* node = createNode(NODE_FOREACH, "forEach");
         if (!_is(TOKEN_KEYWORD, 0, "in", NULL)) {throw(TOKEN_KEYWORD); return NULL;}
