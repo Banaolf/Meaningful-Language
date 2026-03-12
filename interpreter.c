@@ -118,6 +118,8 @@ typedef struct ObjFile {
 #define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
 #define AS_FILE(value)      ((ObjFile*)AS_OBJECT(value))
 
+char currentFileDir[512];
+
 typedef struct Symbol Symbol;
 // The language's core Value type. Can be a number or a pointer to an Object.
 struct Value {
@@ -1481,23 +1483,30 @@ Value evaluate(ASTNode* node) {
         if (!IS_OBJ_TYPE(pathVal, OBJ_STRING)) return throwException(TypeException, "TypeException: Import path must be a string.\n");
 
         char* importPath = AS_CSTRING(pathVal);
+        // 1. Try relative to the importing file's directory
         char* source = "";
+        if (currentFileDir[0] != '\0') {
+            char siblingPath[512];
+            snprintf(siblingPath, sizeof(siblingPath), "%s%s", currentFileDir, importPath);
+            source = readFile(siblingPath);
+        }
 
-        // 1. Try the path as-is first (relative or absolute)
-        source = readFile(importPath);
+        // 2. Try path as-is (relative to cwd or absolute)
+        if (strcmp(source, "") == 0) {
+            source = readFile(importPath);
+        }
 
-        // 2. If not found, try the lib folder relative to the executable
+        // 3. Try lib/ folder
         if (strcmp(source, "") == 0) {
             char libPath[512];
             snprintf(libPath, sizeof(libPath), "lib/%s", importPath);
             source = readFile(libPath);
         }
 
-        // 3. Still not found
-        if (strcmp(source, "")==0) {
-            return throwException(FileNotFoundException, 
-                "FileNotFoundException: Could not find '%s' or 'lib/%s'.\n", 
-                importPath, importPath);
+        // 4. Not found
+        if (strcmp(source, "") == 0) {
+            return throwException(FileNotFoundException,
+                "FileNotFoundException: Could not find '%s'.\n", importPath);
         }
 
         TokenStream* Stream = lex(source);
@@ -1886,6 +1895,10 @@ int main(int argc, char *argv[]) {
         if (argc != 3) { printf("Usage: meaningful --check [name].mean"); return 3; }
         char* src = readFile(argv[2]);
         if (strcmp(src, "") == 0) exit(2);
+        strncpy(currentFileDir, argv[1], sizeof(currentFileDir));
+        char* lastSlash = strrchr(currentFileDir, '/');
+        if (lastSlash) *(lastSlash + 1) = '\0';
+        else currentFileDir[0] = '\0'; 
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
         finalCleanup(stream);
@@ -1900,6 +1913,10 @@ int main(int argc, char *argv[]) {
     } else {
         char* src = readFile(argv[1]);
         if (strcmp(src, "") == 0) exit(2);
+        strncpy(currentFileDir, argv[1], sizeof(currentFileDir));
+        char* lastSlash = strrchr(currentFileDir, '/');
+        if (lastSlash) *(lastSlash + 1) = '\0';
+        else currentFileDir[0] = '\0';
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
         if (root) {
