@@ -489,6 +489,21 @@ void exitScope() {
     }
 }
 
+void removeVariable(char* name) {
+    Scope* scope = currentScope;
+    while (scope) {
+        Symbol* s;
+        HASH_FIND_STR(scope->symbols, name, s);
+        if (s && !s->funcNode && !s->nativeFunc) {
+            HASH_DEL(scope->symbols, s);
+            free(s->name);
+            free(s);
+            return;
+        }
+        scope = scope->prev;
+    }
+}
+
 void defineVariable(char* name, Value val) {
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
@@ -1601,7 +1616,14 @@ Value evaluate(ASTNode* node) {
         return make(VAL_INT, result);
     }
 
-    // 15. Program / Block Execution
+    // 15. Unset
+    if (node->type == NODE_UNSET) {
+        removeVariable(node->value);
+        collectGarbage();
+        return make(VAL_VOID);
+    }
+
+    // 16. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {

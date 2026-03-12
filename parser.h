@@ -37,7 +37,8 @@ typedef enum {
     NODE_CMD,
     NODE_CONVERSION,
     NODE_FOREACH,
-    NODE_IN
+    NODE_IN,
+    NODE_UNSET
 } NodeType;
 
 typedef struct ASTNode {

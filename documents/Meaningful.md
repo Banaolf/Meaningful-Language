@@ -76,6 +76,17 @@ represent i ::Should print just a 0
 
 Note that conversion from dictionaries and lists to either floats or ints just gives the lengths of the object.
 
+## Unset
+
+If you no longer need an object and you want it gone, you can unset it!
+
+```meaningful
+set i = 0
+::Do stuff with i
+unset i
+print i ::WILL throw IdentifierNotFoundException
+```
+
 ---
 
 ## 4. Operators

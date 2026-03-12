@@ -688,6 +688,14 @@ ASTNode* parseStatement() {
         }
     }
 
+    if (_is(TOKEN_KEYWORD, 0, "unset", NULL)) {
+        advance();
+        if (!is(TOKEN_KEYWORD, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
+        Token t = peek(0);
+        advance();
+        return createNode(NODE_UNSET, t.value);
+    }
+
     if (_is(TOKEN_KEYWORD, 0, "return", NULL)) {
         advance(); // Eat 'return'
         ASTNode* expr = parseExpression();
