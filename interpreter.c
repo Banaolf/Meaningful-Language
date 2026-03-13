@@ -52,7 +52,7 @@
     #define LSLEEPS(s) sleep(s)
     #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #define OPEN_URL(url) system("firefox " url " &")
-#endif
+#endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
 #include <stddef.h>
 #include <stdarg.h>
 #include <math.h>
@@ -82,14 +82,19 @@ typedef enum {
     OBJ_STRING,
     OBJ_LIST,
     OBJ_DICT,
-    OBJ_FILE
+    OBJ_FILE,
+    OBJ_POINTER
 } ObjectType;
 
 // The header for all heap-allocated objects in the language
 struct Object {
     ObjectType type;
     bool isMarked;
-    struct Object* next; // Intrusive list to track all allocations
+    struct Object* next;
+    // Pointer tracking
+    struct ObjPointer** pointersToMe;
+    int pointerToMeCount;
+    int pointerToMeCapacity;
 };
 
 typedef struct ObjString {
@@ -105,6 +110,19 @@ typedef struct ObjFile {
     char* contents;
     bool isOpen;
 } ObjFile;
+
+typedef struct ValueList {
+    Object obj;
+    Value* items;
+    int count;
+    int capacity;
+} ValueList;
+
+typedef struct ObjPointer {
+    Object obj;
+    Value* pointee;
+    char* pointeeName; // for invalidation warnings.
+} ObjPointer;
 
 //Helpful macros :)
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
@@ -133,14 +151,6 @@ struct Value {
         Symbol* func;
     } as;
 };
-
-typedef struct ValueList {
-    Object obj;
-    Value* items;
-    int count;
-    int capacity;
-} ValueList;
-
 
 typedef struct DictEntry {
     char* key;
@@ -206,7 +216,7 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
     return v;
 }
 
-// --- Garbage Collector ---
+//                                    -------------------------- Garbage Collector ---------------------------
 
 void collectGarbage();
 
@@ -282,6 +292,13 @@ void markObject(Object* object) {
         case OBJ_FILE: {
             break; // Files don't have outgoing references
         }
+        case OBJ_POINTER: {
+            ObjPointer* ptr = (ObjPointer*)object;
+            if (ptr->pointee != NULL) {
+                markValue(*ptr->pointee);
+            }
+            break;
+        }
     }
 }
 
@@ -323,6 +340,25 @@ static void freeObject(Object* object) {
             if (file->path != NULL) { bytesAllocated -= strlen(file->path) + 1; free(file->path); file->path = NULL; }
             if (file->contents != NULL) { bytesAllocated -= strlen(file->contents) + 1; free(file->contents); file->contents = NULL; }
             free(file);
+            break;
+        }
+        case OBJ_POINTER: {
+            ObjPointer* ptr = (ObjPointer*)object;
+            // Remove self from pointee's pointersToMe list
+            if (ptr->pointee != NULL && ptr->pointee->as.obj != NULL) {
+                Object* target = ptr->pointee->as.obj;
+                for (int i = 0; i < target->pointerToMeCount; i++) {
+                    if (target->pointersToMe[i] == ptr) {
+                        // Shift remaining entries down
+                        for (int j = i; j < target->pointerToMeCount - 1; j++)
+                            target->pointersToMe[j] = target->pointersToMe[j+1];
+                        target->pointerToMeCount--;
+                        break;
+                    }
+                }
+            }
+            bytesAllocated -= sizeof(ObjPointer);
+            free(object);
             break;
         }
     }
@@ -513,6 +549,17 @@ void defineVariable(char* name, Value val) {
     sym->funcNode = NULL;
     sym->nativeFunc = NULL;
     HASH_ADD_STR(currentScope->symbols, name, sym);
+}
+
+Symbol* findSymbol(char* name) {
+    Scope* scope = currentScope;
+    while (scope) {
+        Symbol* s;
+        HASH_FIND_STR(scope->symbols, name, s);
+        if (s && !s->funcNode && !s->nativeFunc) return s;
+        scope = scope->prev;
+    }
+    return NULL;
 }
 
 bool checkType(char* notation, Value val);bool checkCondition(char* condition, Value val);Value evaluate(ASTNode* node);//Forward declarationsss
@@ -1004,6 +1051,17 @@ Value evaluate(ASTNode* node) {
                 entry->value = rvalue;
                 HASH_ADD_STR(dict->head, key, entry);
             }
+            return rvalue;
+        }
+        if (lvalue->type == NODE_DEREF) {
+            Value ptr = evaluate(lvalue->left);
+            if (ptr.type == VAL_ERR) return ptr;
+            if (!IS_OBJ_TYPE(ptr, OBJ_POINTER))
+                return throwException(TypeException, "TypeException: Cannot dereference a non-pointer.\n");
+            ObjPointer* p = (ObjPointer*)ptr.as.obj;
+            if (p->pointee == NULL)
+                return throwException(NullPointerException, "NullPointerException: Pointer '%s' has been invalidated.\n", p->pointeeName);
+            *p->pointee = rvalue;
             return rvalue;
         }
 
@@ -1627,12 +1685,83 @@ Value evaluate(ASTNode* node) {
 
     // 15. Unset
     if (node->type == NODE_UNSET) {
+        if (node->left && node->left->type == NODE_DEREF) {
+            Value ptr = evaluate(node->left->left);
+            if (!IS_OBJ_TYPE(ptr, OBJ_POINTER))
+                return throwException(TypeException, "TypeException: Cannot dereference a non-pointer.\n");
+            
+            ObjPointer* p = (ObjPointer*)ptr.as.obj;
+            if (p->pointee == NULL)
+                return throwException(NullPointerException, "NullPointerException: Pointer already invalidated.\n");
+
+            // Invalidate all sibling pointers
+            Object* target = p->pointee->as.obj;
+            for (int i = 0; i < target->pointerToMeCount; i++) {
+                ObjPointer* sibling = target->pointersToMe[i];
+                if (sibling != p) {
+                    fprintf(stderr, "Warning: pointer '%s' was invalidated because its target was manually freed.\n", sibling->pointeeName);
+                }
+                sibling->pointee = NULL;
+            }
+            free(target->pointersToMe);
+            target->pointersToMe = NULL;
+            target->pointerToMeCount = 0;
+            target->pointerToMeCapacity = 0;
+
+            // Remove the target variable and collect
+            removeVariable(p->pointeeName);
+            collectGarbage();
+            return make(VAL_VOID);
+        }
         removeVariable(node->value);
         collectGarbage();
         return make(VAL_VOID);
     }
 
-    // 16. Program / Block Execution
+    // 16. Pointer
+    if (node->type == NODE_ADDRESS_OF) {
+        if (node->right->type != NODE_VARIABLE)
+            return throwException(RuntimeException, "RuntimeException: Can only take address of a variable.\n");
+
+        char* varName = node->right->value;
+        Symbol* sym = findSymbol(varName);
+        if (!sym)
+            return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Undefined variable '%s'.\n", varName);
+
+        ObjPointer* ptr = (ObjPointer*)allocateObject(sizeof(ObjPointer), OBJ_POINTER);
+        ptr->pointee = &sym->value;
+        ptr->pointeeName = strdup(varName);
+
+        // Register in target's pointersToMe
+        if (sym->value.type == VAL_OBJECT && sym->value.as.obj != NULL) {
+            Object* target = sym->value.as.obj;
+            if (target->pointerToMeCount >= target->pointerToMeCapacity) {
+                target->pointerToMeCapacity = target->pointerToMeCapacity == 0 ? 2 : target->pointerToMeCapacity * 2;
+                target->pointersToMe = realloc(target->pointersToMe, sizeof(ObjPointer*) * target->pointerToMeCapacity);
+            }
+            target->pointersToMe[target->pointerToMeCount++] = ptr;
+        }
+
+        Value result;
+        result.type = VAL_OBJECT;
+        result.as.obj = (Object*)ptr;
+        return result;
+    }
+
+    // 16.1 Deref
+    if (node->type == NODE_DEREF) {
+        Value ptr = evaluate(node->left);
+        if (!IS_OBJ_TYPE(ptr, OBJ_POINTER))
+            return throwException(TypeException, "TypeException: Cannot dereference a non-pointer.\n");
+        
+        ObjPointer* p = (ObjPointer*)ptr.as.obj;
+        if (p->pointee == NULL)
+            return throwException(NullPointerException, "NullPointerException: Pointer '%s' has been invalidated.\n", p->pointeeName);
+        
+        return *p->pointee;
+    }
+
+    // 17. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
         Value lastResult = make(VAL_VOID);
         if (node->children) {

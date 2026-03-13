@@ -113,6 +113,18 @@ TokenStream* lex(char* source) {
             continue;
         }
 
+        if (*c == '^') {
+            addToken(stream, TOKEN_CARET, "^");
+            c++;
+            continue;
+        }
+
+        if (*c == '#') {
+            addToken(stream, TOKEN_HASHTAG, "#"); //COMING SOON
+            c++;
+            continue;
+        }
+
         if (isalnum(*c) || *c == '_' ) {
             char buffer[256] = {0};
             int i = 0;
@@ -163,8 +175,6 @@ TokenStream* lex(char* source) {
             c++;
             continue;
         }
-
-
 
         if (*c == '[' || *c == ']') {
             char buffer[2] = {*c, '\0'};

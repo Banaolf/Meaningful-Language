@@ -66,6 +66,7 @@ const char* keywords[] = {
     "represent",
     "forEach",
     "in",
+    "unset",
     "do",
     NULL
 };
@@ -183,14 +184,10 @@ void addChild(ASTNode* parent, ASTNode* child) {
     parent->children[parent->childCount] = child;
     parent->childCount++;
 }
-//PARSERS---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------PARSERS----------------------------------------------------------------------------
 
-// Parse expression
 ASTNode* parseExpression();
-// Parse statement
-ASTNode* parseStatement(); 
-
-// Parse primary expression
+ASTNode* parseStatement();
 ASTNode* parsePrimaryExpression();
 
 // New function to handle postfix operators like (), [], and .
@@ -304,6 +301,11 @@ ASTNode* parsePostfixExpression() {
             accessNode->left = node; // The thing being indexed
             accessNode->right = indexNode; // The index
             node = accessNode;
+        } else if (is(TOKEN_CARET, 0)) {
+            advance();
+            ASTNode* deref = createNode(NODE_DEREF, "^");
+            deref->left = node;
+            node = deref;
         } else {
             break; // No more postfix operators
         }
@@ -318,7 +320,7 @@ ASTNode* parsePrimaryExpression() {
     }
 
     // Unary not
-    if (_is(TOKEN_UNARY, 0, "!", "not", NULL)) {
+    if (is(TOKEN_UNARY, 0)) {
         advance();
         ASTNode* operand = parsePrimaryExpression();
         if (!operand) return NULL;
@@ -341,7 +343,7 @@ ASTNode* parsePrimaryExpression() {
         return node;
     }
 
-    if (_is(TOKEN_DLRSIGN, 0, "$", NULL)) {
+    if (is(TOKEN_DLRSIGN, 0)) {
         advance();
         ASTNode* cmd = parsePrimaryExpression(); // string
         if (!cmd) return NULL;
@@ -354,6 +356,13 @@ ASTNode* parsePrimaryExpression() {
         Token t = peek(0);
         advance();
         return createNode(NODE_NUMBER, t.value);
+    }
+
+    if (is(TOKEN_CARET, 0)) {
+        advance();
+        ASTNode* node = createNode(NODE_ADDRESS_OF, NULL);
+        node->right = parseExpression(); // the variable being pointed to
+        return node;
     }
 
     if (is(TOKEN_NON, 0)) {
@@ -691,10 +700,19 @@ ASTNode* parseStatement() {
 
     if (_is(TOKEN_KEYWORD, 0, "unset", NULL)) {
         advance();
-        if (!is(TOKEN_KEYWORD, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
-        Token t = peek(0);
-        advance();
-        return createNode(NODE_UNSET, t.value);
+        ASTNode* target = parsePostfixExpression();
+        ASTNode* node = createNode(NODE_UNSET, NULL);
+        if (target->type == NODE_DEREF) {
+            node->left = target;
+        } else if (target->type == NODE_VARIABLE) {
+            node->value = strdup(target->value);
+            freeAST(target);
+        } else {
+            freeAST(target);
+            throwVoid();
+            return NULL;
+        }
+        return node;
     }
 
     if (_is(TOKEN_KEYWORD, 0, "return", NULL)) {
@@ -936,7 +954,7 @@ ASTNode* parseStatement() {
     if (!expr) return NULL;
 
     if (is(TOKEN_EQUALS, 0) || is(TOKEN_COMPOUND_ASSIGN, 0)) { // It's an assignment
-        if (expr->type != NODE_VARIABLE && expr->type != NODE_INDEX_ACCESS && expr->type != NODE_MEMBER_ACCESS) {
+        if (expr->type != NODE_VARIABLE && expr->type != NODE_INDEX_ACCESS && expr->type != NODE_MEMBER_ACCESS && expr->type != NODE_DEREF) {
             printf("[PARSER]SyntaxException: Invalid target for assignment.\n");
             parserError = 1;
             freeAST(expr);

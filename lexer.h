@@ -25,7 +25,9 @@ typedef enum {
     TOKEN_UNARY, // !, not, -x
     TOKEN_DLRSIGN, //$ (for cmd)
     TOKEN_AT, // For @ (type checking)
-    ERR //Mostly for when theres multiple . in float. Maybe other uses in the future
+    TOKEN_CARET, // ^ for pointers
+    TOKEN_HASHTAG, // # for interpolated strings
+    ERR // For when there is an error during lexing (e.g: Unknown character)
 } TokenType;
 
 typedef struct {
