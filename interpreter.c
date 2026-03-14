@@ -60,7 +60,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.1.0.1"
+#define VERSION "BETA.1.1.1.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -83,7 +83,8 @@ typedef enum {
     OBJ_LIST,
     OBJ_DICT,
     OBJ_FILE,
-    OBJ_POINTER
+    OBJ_POINTER,
+    OBJ_BOXED
 } ObjectType;
 
 // The header for all heap-allocated objects in the language
@@ -122,6 +123,7 @@ typedef struct ObjPointer {
     Object obj;
     Value* pointee;
     char* pointeeName; // for invalidation warnings.
+    char* targetName;
 } ObjPointer;
 
 //Helpful macros :)
@@ -151,6 +153,11 @@ struct Value {
         Symbol* func;
     } as;
 };
+
+typedef struct {
+    Object obj;
+    Value value;
+} ObjBoxed;
 
 typedef struct DictEntry {
     char* key;
@@ -299,6 +306,11 @@ void markObject(Object* object) {
             }
             break;
         }
+        case OBJ_BOXED: {
+            ObjBoxed* box = (ObjBoxed*)object;
+            markValue(box->value);
+            break;
+        }
     }
 }
 
@@ -358,6 +370,11 @@ static void freeObject(Object* object) {
                 }
             }
             bytesAllocated -= sizeof(ObjPointer);
+            free(object);
+            break;
+        }
+        case OBJ_BOXED: {
+            bytesAllocated -= sizeof(ObjBoxed);
             free(object);
             break;
         }
@@ -433,35 +450,42 @@ Value getVariable(char* name) {
     while (scope) {
         Symbol* s;
         HASH_FIND_STR(scope->symbols, name, s);
-        // We only want variables, not functions
         if (s && !s->funcNode && !s->nativeFunc) {
+            // Unwrap boxed primitives transparently
+            if (IS_OBJ_TYPE(s->value, OBJ_BOXED))
+                return ((ObjBoxed*)s->value.as.obj)->value;
             return s->value;
         }
         scope = scope->prev;
     }
     return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Variable '%s' not defined.\n", name);
 }
-
-// Helper: Set variable (Update existing or create new in global/current scope)
+// Helper: Set a variable to the stack (Scope)
 void setVariable(char* name, Value val) {
-    // Search from current scope up to global to find existing variable
     Scope* scope = currentScope;
     while (scope != NULL) {
         Symbol* s;
         HASH_FIND_STR(scope->symbols, name, s);
         if (s && !s->funcNode && !s->nativeFunc) {
-            s->value = val;
+            // Update pointer's own name
+            if (IS_OBJ_TYPE(val, OBJ_POINTER))
+                ((ObjPointer*)val.as.obj)->pointeeName = strdup(name);
+            // If already boxed, update box contents instead of replacing
+            if (IS_OBJ_TYPE(s->value, OBJ_BOXED))
+                ((ObjBoxed*)s->value.as.obj)->value = val;
+            else
+                s->value = val;
             return;
         }
         scope = scope->prev;
     }
-    
-    // If not found, add to the current scope's hash table.
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
     sym->value = val;
     sym->funcNode = NULL;
     sym->nativeFunc = NULL;
+    if (IS_OBJ_TYPE(val, OBJ_POINTER))
+        ((ObjPointer*)val.as.obj)->pointeeName = strdup(name);
     HASH_ADD_STR(currentScope->symbols, name, sym);
 }
 Value currentSelf;
@@ -548,6 +572,8 @@ void defineVariable(char* name, Value val) {
     sym->value = val;
     sym->funcNode = NULL;
     sym->nativeFunc = NULL;
+    if (IS_OBJ_TYPE(val, OBJ_POINTER))
+        ((ObjPointer*)val.as.obj)->pointeeName = strdup(name);
     HASH_ADD_STR(currentScope->symbols, name, sym);
 }
 
@@ -644,6 +670,12 @@ void printValueRecursive(Value val) {
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("%s", AS_CSTRING(val));
     else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
+    else if (IS_OBJ_TYPE(val, OBJ_BOXED)) printValueRecursive(((ObjBoxed*)val.as.obj)->value);
+    else if (IS_OBJ_TYPE(val, OBJ_POINTER)) {
+        ObjPointer* p = (ObjPointer*)val.as.obj;
+        if (p->pointee == NULL) printf("<pointer -> (invalidated)>");
+        else printf("<pointer -> %s>", p->targetName);
+    }
     else if (IS_OBJ_TYPE(val, OBJ_LIST)) {
         ValueList* list = AS_LIST(val);
         printf("[");
@@ -673,6 +705,12 @@ void printValueReprRecursive(Value val) { //Sorry for the repetition, I couldn't
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("\"%s\"", AS_CSTRING(val));
     else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
+    else if (IS_OBJ_TYPE(val, OBJ_BOXED)) printValueReprRecursive(((ObjBoxed*)val.as.obj)->value);
+    else if (IS_OBJ_TYPE(val, OBJ_POINTER)) {
+        ObjPointer* p = (ObjPointer*)val.as.obj;
+        if (p->pointee == NULL) printf("\"<pointer -> (invalidated)>\"");
+        else printf("%p", (void*)p->pointee);
+    }
     else if (IS_OBJ_TYPE(val, OBJ_LIST)) {
         ValueList* list = AS_LIST(val);
         printf("[");
@@ -1062,7 +1100,11 @@ Value evaluate(ASTNode* node) {
             ObjPointer* p = (ObjPointer*)ptr.as.obj;
             if (p->pointee == NULL)
                 return throwException(NullPointerException, "NullPointerException: Pointer '%s' has been invalidated.\n", p->pointeeName);
-            *p->pointee = rvalue;
+            
+            if (IS_OBJ_TYPE(*p->pointee, OBJ_BOXED))
+                ((ObjBoxed*)p->pointee->as.obj)->value = rvalue;
+            else
+                *p->pointee = rvalue;
             return rvalue;
         }
 
@@ -1690,29 +1732,51 @@ Value evaluate(ASTNode* node) {
             Value ptr = evaluate(node->left->left);
             if (!IS_OBJ_TYPE(ptr, OBJ_POINTER))
                 return throwException(TypeException, "TypeException: Cannot dereference a non-pointer.\n");
-            
             ObjPointer* p = (ObjPointer*)ptr.as.obj;
             if (p->pointee == NULL)
                 return throwException(NullPointerException, "NullPointerException: Pointer already invalidated.\n");
 
-            // Invalidate all sibling pointers
-            Object* target = p->pointee->as.obj;
-            for (int i = 0; i < target->pointerToMeCount; i++) {
-                ObjPointer* sibling = target->pointersToMe[i];
-                if (sibling != p) {
-                    fprintf(stderr, "Warning: pointer '%s' was invalidated because its target was manually freed.\n", sibling->pointeeName);
+            // Get the actual object (unwrap boxed if needed)
+            Object* target = NULL;
+            if (IS_OBJ_TYPE(*p->pointee, OBJ_BOXED) || p->pointee->type == VAL_OBJECT)
+                target = p->pointee->as.obj;
+
+            if (target != NULL) {
+                for (int i = 0; i < target->pointerToMeCount; i++) {
+                    ObjPointer* sibling = target->pointersToMe[i];
+                    if (sibling != p) {
+                        fprintf(stderr, "Warning: pointer '%s' was invalidated because its target was manually freed.\n", sibling->pointeeName);
+                    }
+                    removeVariable(sibling->pointeeName);
+                    sibling->pointee = NULL;
                 }
-                sibling->pointee = NULL;
+                free(target->pointersToMe);
+                target->pointersToMe = NULL;
+                target->pointerToMeCount = 0;
+                target->pointerToMeCapacity = 0;
+            }
+
+            removeVariable(p->targetName);  // remove x
+            removeVariable(p->pointeeName); // remove z
+            collectGarbage();
+            return make(VAL_VOID);
+        }
+
+        // Normal unset — also clean up any pointers pointing to this variable
+        Symbol* sym = findSymbol(node->value);
+        if (sym && sym->value.type == VAL_OBJECT && sym->value.as.obj != NULL) {
+            Object* target = sym->value.as.obj;
+            for (int i = 0; i < target->pointerToMeCount; i++) {
+                ObjPointer* ptr = target->pointersToMe[i];
+                fprintf(stderr, "Warning: pointer '%s' was invalidated because its target '%s' was freed.\n",
+                    ptr->pointeeName, node->value);
+                removeVariable(ptr->pointeeName);
+                ptr->pointee = NULL;
             }
             free(target->pointersToMe);
             target->pointersToMe = NULL;
             target->pointerToMeCount = 0;
             target->pointerToMeCapacity = 0;
-
-            // Remove the target variable and collect
-            removeVariable(p->pointeeName);
-            collectGarbage();
-            return make(VAL_VOID);
         }
         removeVariable(node->value);
         collectGarbage();
@@ -1723,25 +1787,33 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_ADDRESS_OF) {
         if (node->right->type != NODE_VARIABLE)
             return throwException(RuntimeException, "RuntimeException: Can only take address of a variable.\n");
-
         char* varName = node->right->value;
         Symbol* sym = findSymbol(varName);
         if (!sym)
             return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Undefined variable '%s'.\n", varName);
 
+        // Box primitive if needed
+        if (sym->value.type != VAL_OBJECT) {
+            ObjBoxed* box = (ObjBoxed*)allocateObject(sizeof(ObjBoxed), OBJ_BOXED);
+            box->value = sym->value;
+            Value boxed;
+            boxed.type = VAL_OBJECT;
+            boxed.as.obj = (Object*)box;
+            sym->value = boxed;
+        }
+
         ObjPointer* ptr = (ObjPointer*)allocateObject(sizeof(ObjPointer), OBJ_POINTER);
         ptr->pointee = &sym->value;
+        ptr->targetName = strdup(varName);
         ptr->pointeeName = strdup(varName);
 
         // Register in target's pointersToMe
-        if (sym->value.type == VAL_OBJECT && sym->value.as.obj != NULL) {
-            Object* target = sym->value.as.obj;
-            if (target->pointerToMeCount >= target->pointerToMeCapacity) {
-                target->pointerToMeCapacity = target->pointerToMeCapacity == 0 ? 2 : target->pointerToMeCapacity * 2;
-                target->pointersToMe = realloc(target->pointersToMe, sizeof(ObjPointer*) * target->pointerToMeCapacity);
-            }
-            target->pointersToMe[target->pointerToMeCount++] = ptr;
+        Object* target = sym->value.as.obj;
+        if (target->pointerToMeCount >= target->pointerToMeCapacity) {
+            target->pointerToMeCapacity = target->pointerToMeCapacity == 0 ? 2 : target->pointerToMeCapacity * 2;
+            target->pointersToMe = realloc(target->pointersToMe, sizeof(ObjPointer*) * target->pointerToMeCapacity);
         }
+        target->pointersToMe[target->pointerToMeCount++] = ptr;
 
         Value result;
         result.type = VAL_OBJECT;
@@ -1754,11 +1826,14 @@ Value evaluate(ASTNode* node) {
         Value ptr = evaluate(node->left);
         if (!IS_OBJ_TYPE(ptr, OBJ_POINTER))
             return throwException(TypeException, "TypeException: Cannot dereference a non-pointer.\n");
-        
         ObjPointer* p = (ObjPointer*)ptr.as.obj;
         if (p->pointee == NULL)
             return throwException(NullPointerException, "NullPointerException: Pointer '%s' has been invalidated.\n", p->pointeeName);
-        
+
+        // Unwrap boxed primitive
+        if (IS_OBJ_TYPE(*p->pointee, OBJ_BOXED))
+            return ((ObjBoxed*)p->pointee->as.obj)->value;
+
         return *p->pointee;
     }
 
@@ -1842,7 +1917,7 @@ Value native_any(int argc, Value* args) {
 }
 
 Value native_GCCOLL(int argc, Value* args) {
-    printf("WARNING: Collecting garbage manually called.");
+    printf("WARNING: Collecting garbage manually called.\n");
     collectGarbage();
     return make(VAL_VOID);
 }
