@@ -60,7 +60,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.0.0.2"
+#define VERSION "BETA.1.1.0.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -798,6 +798,7 @@ bool checkType(char* notation, Value val) {
     if (strcmp(notation, "list")   == 0) return IS_OBJ_TYPE(val, OBJ_LIST);
     if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
     if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
+    if (strcmp(notation, "pointer") == 0) return IS_OBJ_TYPE(val, OBJ_POINTER);
     if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
     if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
     if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; 

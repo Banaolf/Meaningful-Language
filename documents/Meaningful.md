@@ -374,7 +374,40 @@ It spans multiple lines.
 
 ---
 
-## 14. Syntax Notes
+## 14. Pointers
+
+A pointer is the memory adress where its contents live. Example to understand it:
+```meaningful
+set x = 10 ::Set the variable 'x' to 10
+set y = ^x ::Set y to be a pointer of x, so the memory adress (Where the variable x lives).
+
+y^ = 9 ::Reassign y using the pointer after the variable does not give the memory adress, but its contents. In here, x would also be 9
+unset y ::This is how you 'free' a pointer. It is not needed since the GC already does this, but a good practice.
+
+set z = ^x :: Assign another pointer, remember x is now 9
+z^ = 10 :: Set x to 10 again
+unset z^ ::What this will do is unset x, itself and all pointers pointing into x.
+```
+
+That simple. Think of pointers as a link to the variable they are pointing to.
+Pointers are optional. They can be of used for functions that change the variable they are given, too!
+
+```meaningful
+set x = "this is a string"
+set y = ^x
+set changeX(y@pointer) ::Not needed to add the type checking but really good practice as it assures you get that type or an exception is thrown.
+  y^ = "This is another string now!" :: This changes because again, y is basically a link to x, so if y^ is changed, x does too
+end
+
+changeX(y)
+print y ::This should print the memory address (example: 0x52A132F3)
+unset y
+print x ::Should print "This is another string now!".
+```
+
+---
+
+## 15. Syntax Notes
 
 - **Semicolons** `;` are optional statement terminators.
 - **Booleans** `true` and `false` are stored internally as `1` and `0`.
@@ -383,7 +416,7 @@ It spans multiple lines.
 
 ---
 
-## 15. Exit Codes
+## 16. Exit Codes
 
 | Code | Meaning         |
 | ------| -----------------|
