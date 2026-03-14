@@ -1,18 +1,10 @@
-:;
-This is meant to be a plan for syntax. Does not mean it works right now.
-;:
+set stringOrInt = random(1) ? "Its a string!" : 011010010110111001110100 ::Ternary is enroute
 
-createfile "C:\Users\User\test.mean" as file :: the as file is not needed. Just if you want the variable there
-readfile file ::Instead of file, it can also be a path. You can also put as file here. 
-    overwrite "Hi!" ::Note: OVERWRITES
-    put "That is cheese!"
-else as err::Note: PLANED SYNTAX. This gives the err instance. Specific syntax for catching errors may change.
-    print err.message()
-    print err.type()
-    createfile "C:\\Users\\User\\scripts\\script.mean" ::Note: PLANNED
-    retry ::Note: PLANNED SYNTAX, made specifically for error-catching stuff. retry by default retries this once, but if you give it a number after the call it will retry it that amount of times. Put true to infinitly retry (NOT RECOMMENDED)
+set myFunc(x@int:not_zero=5, y@pointer) :: Setting default arguments is planned
+    y^ = y^ / x
 end
-unset file ::Removes a variable
-deletefile "C:\Users\User\test.mean" ::Removes a file
-    print "File couldn't be deleted" ::If theres an error in the process, it either throws it or does the following code.
-end
+
+set int = 394
+set anotherInt = 00110111
+set myInterpolatedString = #"One number: {int} And another: {anotherInt}" ::Interpolated strings with # are planned
+$#"echo {int}" ::Even on commands!
