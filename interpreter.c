@@ -642,7 +642,7 @@ Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
     ASTNode* funcDef = callable->funcNode;
     int paramCount = funcDef->childCount - 1;
     
-    if (paramCount != argCount) {
+    if (paramCount > argCount) {
         return throwException(ArgumentException,
             "ArgumentException: Function '%s' expected %d arguments but got %d.\n",
             funcDef->value, paramCount, argCount);
