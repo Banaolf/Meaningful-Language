@@ -623,6 +623,12 @@ ASTNode* parseFunctionDefinition(char* name) {
                         arg->type_condition = strdup(condToken.value);
                     }
                 }
+                if (is(TOKEN_EQUALS, 0)) {
+                    advance();
+                    ASTNode* defaultVal = parseExpression();
+                    if (!defaultVal) return NULL;
+                    arg->right = defaultVal;
+                }
             } else {
                 throw(TOKEN_IDENTIFIER);
             }

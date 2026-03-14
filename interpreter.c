@@ -60,7 +60,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.2.0.1"
+#define VERSION "BETA.1.3.0.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -609,7 +609,17 @@ Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
     enterScope();
     for (int i = 0; i < paramCount; i++) {
         ASTNode* param = funcDef->children[i];
-        Value arg = argValues[i];
+        Value arg;
+        if (i < argCount) {
+            arg = argValues[i];
+        } else if (param->right != NULL) {
+            arg = evaluate(param->right); // use default
+        } else {
+            exitScope();
+            return throwException(ArgumentException,
+                "ArgumentException: Missing argument '%s' and no default provided.\n",
+                param->value);
+        }
         if (param->type_notation) {
             if (!checkType(param->type_notation, arg)) {
                 exitScope();
