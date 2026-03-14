@@ -12,8 +12,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-BMLL2.0-a78bfa?style=flat-square"/>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20BSD%20%7C%20more-4ade80?style=flat-square"/>
-  <img src="https://img.shields.io/badge/status-alpha-fdba74?style=flat-square"/>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20more-4ade80?style=flat-square"/>
+  <img src="https://img.shields.io/badge/status-full_release-fdba74?style=flat-square"/>
 </p>
 
 ---
@@ -40,12 +40,13 @@ Meaningful is a hand-crafted interpreted language built from scratch in C. It ai
 - Ternary operator
 - Native functions: `input`, `random`, `sleep`, `length`, `clock`, and more
 - Shell / REPL mode
-- `--check` mode for editor integration
 - Cross-platform
 
 ---
 
 ## Platform Support
+
+Note: Only Linux and Windows are tested
 
 | Platform | Supported |
 |----------|-----------|
@@ -67,13 +68,16 @@ Meaningful is a hand-crafted interpreted language built from scratch in C. It ai
 ### Linux (Debian/Ubuntu)
 Download the `.deb` file from the [releases page](https://github.com/Banaolf/Meaningful-Language/releases) and run:
 ```bash
-sudo apt install ./meaningfulang.deb
+sudo apt install ./meaningfulang-VERSION.deb
 ```
 
+Or double click it
+
 ### Windows
-A `.msi` installer is coming soon. In the meantime, compile from source.
+`msi` Installers dont come for every release, but I try to put installers like this whenever i can.
 
 ### Build from source
+rename the makefile.lin (or .win if you are in windows) and run `make`if you have make installer, else
 ```bash
 gcc interpreter.c lexer.c parser.c -o meaningful -lm
 ```
@@ -85,7 +89,6 @@ gcc interpreter.c lexer.c parser.c -o meaningful -lm
 ```bash
 meaningful script.mean        # Run a file
 meaningful                    # Start the REPL shell
-meaningful --check file.mean  # Check for errors (for editor integration)
 ```
 
 ---
@@ -97,9 +100,9 @@ meaningful --check file.mean  # Check for errors (for editor integration)
 print "Hello, World!"
 ```
 
-### Functions with type annotations and default parameters
+### Functions with type annotations, conditions and default parameters
 ```meaningful
-set greet(name@string, greeting = "Hello")
+set greet(name@string:not_empty, greeting@string:not_empty = "Hello")
     print greeting + ", " + name + "!"
 end
 
@@ -141,15 +144,6 @@ set safeDivide(a@int:positive, b@int:positive)
     return a / b
 end
 ```
-
----
-
-## Editor Support
-
-A VSCodium/VS Code extension is available with:
-- Syntax highlighting
-- Snippets
-- Language server diagnostics (coming soon)
 
 ---
 
