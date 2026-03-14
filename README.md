@@ -1,7 +1,7 @@
 # Meaningful Language
 
 <p align="center">
-  <img src="meanignfulang.png" alt="Meaningful Language Logo" width="120"/>
+  <img src="icons/meaningfulD.png" alt="Meaningful Language Logo" width="120"/>
 </p>
 
 <p align="center">
