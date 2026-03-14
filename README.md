@@ -75,9 +75,10 @@ Or double click it
 
 ### Windows
 `msi` Installers dont come for every release, but I try to put installers like this whenever i can.
+If there is an `msi` for that release, just download it and double click it, accept the licence and install. May prompt you for admin priviliges
 
 ### Build from source
-rename the makefile.lin (or .win if you are in windows) and run `make`if you have make installer, else
+rename the makefile.lin (or .win if you are in windows) and run `make`if you have make installed, else
 ```bash
 gcc interpreter.c lexer.c parser.c -o meaningful -lm
 ```
