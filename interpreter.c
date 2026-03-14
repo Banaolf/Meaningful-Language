@@ -137,6 +137,8 @@ typedef struct ObjPointer {
 #define AS_DICT(value)      ((ValueDict*)AS_OBJECT(value))
 #define AS_LIST(value)      ((ValueList*)AS_OBJECT(value))
 #define AS_FILE(value)      ((ObjFile*)AS_OBJECT(value))
+#define AS_POINTER(value) ((ObjPointer*)AS_OBJECT(value))
+#define AS_BOXED(value) ((ObjBoxed*)AS_OBJECT(value))
 
 char currentFileDir[512];
 
@@ -523,11 +525,36 @@ void defineNative(const char* name, NativeFn func) {
 }
 
 bool is_falsy(Value val) {
-    return ( //Made easy to edit for the future
-        (val.type == VAL_INT && val.as.number == 0) || 
-        (IS_OBJ_TYPE(val, OBJ_STRING) && AS_STRING(val)-> length == 0) || 
-        val.type == VAL_NON || 
-        (val.type == VAL_FLOAT && val.as.decimal == 0.0f));
+    switch (val.type) {
+        case VAL_FLOAT: return val.as.decimal == 0.0;
+        case VAL_INT: return val.as.number == 0;
+        case VAL_NON: return 1;
+        case VAL_OBJECT: {
+            switch (val.as.obj->type) {
+                case OBJ_STRING: return AS_STRING(val)->length == 0;
+                case OBJ_LIST: return AS_LIST(val)->count == 0;
+                case OBJ_DICT: return HASH_COUNT(AS_DICT(val)->head) == 0;
+                case OBJ_POINTER: {
+                    ObjPointer* p = AS_POINTER(val);
+                    if (p->pointee == NULL) return 1;
+                    return is_falsy(*p->pointee);
+                };
+                case OBJ_FILE: return AS_FILE(val)->isOpen;
+                case OBJ_BOXED: {
+                    ObjBoxed* boxed = AS_BOXED(val);
+                    if (boxed->value.type == VAL_ERR) return 1;
+                    return is_falsy(boxed->value);
+                };
+                default: return 1;
+            }
+        }
+        case VAL_VOID: return 1;
+        case VAL_ERR: return 1;
+        case VAL_RETURN: return 1;
+        case VAL_BREAK: return 1;
+        case VAL_FUNCTION: return 0;
+        default: return 1;
+    }
 }
 
 // Helper: Retrieve a callable symbol (user or native function)
@@ -1530,6 +1557,14 @@ Value evaluate(ASTNode* node) {
             
             return make(VAL_VOID);
         }
+    }
+
+    //8.2 Ternary
+    if (node->type == NODE_TERNARY) {
+        Value cond = evaluate(node->left);
+        if (cond.type == VAL_ERR) return cond;
+        if (!is_falsy(cond)) return evaluate(node->right->left);
+        else return evaluate(node->right->right);
     }
 
     // 9. While Loops

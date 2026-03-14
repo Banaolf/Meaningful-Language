@@ -548,9 +548,6 @@ ASTNode* parseAddSub() {
     return left;
 }
 
-// Merged parseComparison + parseEquality: handles <, >, <=, >=, ==, !=
-// All are left-associative TOKEN_COMPARISON operators at the same precedence level.
-// This matches Python's behavior where comparisons chain left-to-right.
 ASTNode* parseComparison() {
     ASTNode* left = parseAddSub();
 
@@ -577,6 +574,7 @@ ASTNode* parseComparison() {
 
 ASTNode* parseLogic() {
     ASTNode* left = parseComparison();
+    if (!left) return NULL;
 
     while (_is(TOKEN_KEYWORD, 0, "and", "or", NULL)) {
         if (parserError) break;
@@ -598,10 +596,27 @@ ASTNode* parseExpression() {
 
     if (is(TOKEN_QUESTION_MARK, 0)) {
         advance();
-        ASTNode* thenExpr = parseExpression(); //recursive for nesting
-        if (!thenExpr) {freeAST(left);return NULL;}
-        if (!is(TOKEN_COLON, 0)) {freeAST(thenExpr); free(left); return NULL;}
+
+        ASTNode* thenExpr = parseExpression();
+        if(!thenExpr) {freeAST(left); return NULL;}
+
+        if (!is(TOKEN_COLON, 0)) {freeAST(left); freeAST(thenExpr); return NULL;}
+        else advance(); //skip :
+
+        ASTNode* elseExpr = parseExpression();
+        if (!elseExpr) {freeAST(left); freeAST(thenExpr); return NULL;}
+
+        
+        ASTNode* colonNode = createNode(NODE_COLON, ":");
+        colonNode->left = thenExpr;
+        colonNode->right = elseExpr;
+
+        ASTNode* node = createNode(NODE_TERNARY, "?");
+        node->left = left;
+        node->right = colonNode;
+        return node;
     }
+    return left;
 }
 
 ASTNode* parseFunctionDefinition(char* name) {
