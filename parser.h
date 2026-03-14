@@ -41,7 +41,8 @@ typedef enum {
     NODE_UNSET,
     NODE_ADDRESS_OF,
     NODE_DEREF,
-    NODE_CREATEFILE
+    NODE_CREATEFILE,
+    NODE_TERNARY
 } NodeType;
 
 typedef struct ASTNode {

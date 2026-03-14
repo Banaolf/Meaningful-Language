@@ -27,6 +27,7 @@ typedef enum {
     TOKEN_AT, // For @ (type checking)
     TOKEN_CARET, // ^ for pointers
     TOKEN_HASHTAG, // # for interpolated strings
+    TOKEN_QUESTION_MARK, //? for ternary operator
     ERR // For when there is an error during lexing (e.g: Unknown character)
 } TokenType;
 

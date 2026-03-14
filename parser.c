@@ -593,7 +593,15 @@ ASTNode* parseLogic() {
 }
 
 ASTNode* parseExpression() {
-    return parseLogic();
+    ASTNode* left = parseLogic();
+    if (!left) return NULL;
+
+    if (is(TOKEN_QUESTION_MARK, 0)) {
+        advance();
+        ASTNode* thenExpr = parseExpression(); //recursive for nesting
+        if (!thenExpr) {freeAST(left);return NULL;}
+        if (!is(TOKEN_COLON, 0)) {freeAST(thenExpr); free(left); return NULL;}
+    }
 }
 
 ASTNode* parseFunctionDefinition(char* name) {

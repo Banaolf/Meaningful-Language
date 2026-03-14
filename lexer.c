@@ -95,6 +95,12 @@ TokenStream* lex(char* source) {
             continue;
         }
 
+        if (*c == '?') {
+            addToken(stream, TOKEN_QUESTION_MARK, "?");
+            c++;
+            continue;
+        }
+
         if (*c == '.'){
             addToken(stream, TOKEN_DOT, ".");
             c++;

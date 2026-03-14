@@ -467,6 +467,20 @@ void setVariable(char* name, Value val) {
         Symbol* s;
         HASH_FIND_STR(scope->symbols, name, s);
         if (s && !s->funcNode && !s->nativeFunc) {
+            if (IS_OBJ_TYPE(s->value, OBJ_POINTER)) {
+                ObjPointer* oldPtr = (ObjPointer*)s->value.as.obj;
+                if (oldPtr->pointee != NULL && oldPtr->pointee->type == VAL_OBJECT) {
+                    Object* oldTarget = oldPtr->pointee->as.obj;
+                    for (int i = 0; i < oldTarget->pointerToMeCount; i++) {
+                        if (oldTarget->pointersToMe[i] == oldPtr) {
+                            for (int j = i; j < oldTarget->pointerToMeCount - 1; j++)
+                                oldTarget->pointersToMe[j] = oldTarget->pointersToMe[j+1];
+                            oldTarget->pointerToMeCount--;
+                            break;
+                        }
+                    }
+                }
+            }
             // Update pointer's own name
             if (IS_OBJ_TYPE(val, OBJ_POINTER))
                 ((ObjPointer*)val.as.obj)->pointeeName = strdup(name);
@@ -479,6 +493,7 @@ void setVariable(char* name, Value val) {
         }
         scope = scope->prev;
     }
+    // Not found — create new
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
     sym->value = val;
