@@ -39,6 +39,8 @@ char* tokenTypeToString(TokenType type){
         case TOKEN_UNARY: return "TOKEN_UNARY";
         case TOKEN_AT: return "TOKEN_AT";
         case TOKEN_DLRSIGN: return "TOKEN_DLRSIGN";
+        case TOKEN_CARET: return "TOKEN_CARET";
+        case TOKEN_HASHTAG: return "TOKEN_HASHTAG";
         case ERR: return "ERR";
         default: return "UNKNOWN";
     }
@@ -68,6 +70,7 @@ const char* keywords[] = {
     "in",
     "unset",
     "do",
+    "createfile",
     NULL
 };
 
@@ -932,6 +935,19 @@ ASTNode* parseStatement() {
             }
         }
 
+        return node;
+    }
+    if (_is(TOKEN_KEYWORD, 0, "createfile", NULL)) {
+        advance();
+        ASTNode* expr = parsePrimaryExpression(); // PATH
+        ASTNode* node = createNode(NODE_CREATEFILE, NULL); //NULL if it doesn't have a variable assigned to it
+        node->left = expr;
+        if (_is(TOKEN_KEYWORD, 0, "as", NULL)) {
+            advance();
+            if (!is(TOKEN_IDENTIFIER, 0)) {throw(TOKEN_IDENTIFIER); return NULL;}
+            Token t = peek(0);
+            node->value = t.value;
+        }
         return node;
     }
 

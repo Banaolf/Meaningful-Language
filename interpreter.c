@@ -1696,7 +1696,30 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-    // 13.1 File interactions
+	// 13.1 Createfile
+	if (node->type == NODE_CREATEFILE) {
+		Value path = evaluate(node->left);
+		if (path.type == VAL_ERR) return path;
+		if (!IS_OBJ_TYPE(path, OBJ_STRING)) return throwException(TypeException, "TypeException: createfile expects a string as first argument");
+		FILE* file = fopen(AS_CSTRING(path), "x");
+		if (!file) {printf("WARNING: File couldn't be created, trying to create/overwrite");file = fopen(AS_CSTRING(path), "w");}
+		else if(node->value) {
+			ObjFile* File = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
+			File->path = AS_CSTRING(path);
+			defineVariable(node->value, make(VAL_OBJECT, File));
+			fclose(file);
+		}
+		if (!file) return throwException(RuntimeException, "RuntimeException: File couldn't be created. No further info given.");
+		else if(node->value) {
+			ObjFile* File = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
+			File->path = AS_CSTRING(path);
+			defineVariable(node->value, make(VAL_OBJECT, File));
+			fclose(file);
+		}
+		return make(VAL_VOID);
+	}
+
+    // 13.2 File interactions
     if (node->type == NODE_FILE_INTERACTION) {
         if (strcmp(node->value, "overwrite") == 0) {
             if (!currentFile->isOpen || !currentFile->file) return throwException(RuntimeException, "RuntimeException: File has to be opened to perform this action.\n");
@@ -1949,6 +1972,14 @@ Value native_sleep(int argc, Value* args) {
     return make(VAL_VOID);
 }
 
+Value native_deletefile(int argc, Value* args) {
+	if (argc != 1) return throwException(ArgumentException, "ArgumentException: deletefile() only takes 1 argument.");
+	if (!IS_OBJ_TYPE(args[0], OBJ_STRING) && !IS_OBJ_TYPE(args[0], OBJ_FILE)) return throwException(TypeException, "TypeException: deletefile() only takes a string or file.");
+	char* path = IS_OBJ_TYPE(args[0], OBJ_FILE) ? AS_FILE(args[0])->path : AS_CSTRING(args[0]);
+	if (remove(path) != 0) return throwException(FileNotFoundException, "FileNotFoundException: File couldn't be deleted because it wasnt found.");
+	return make(VAL_VOID);
+}
+
 // --- Initialization ---
 
 void initNatives() {
@@ -1960,6 +1991,7 @@ void initNatives() {
     defineNative("none", native_none);
     defineNative("_GCCOLLECT_", native_GCCOLL);
     defineNative("random", native_random);
+	defineNative("deleteFile", native_deletefile);
 }
 
 void initSymbolTable() {
