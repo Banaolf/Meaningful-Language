@@ -334,6 +334,14 @@ ASTNode* parsePrimaryExpression() {
         return node;
     }
 
+    if (is(TOKEN_BINARY, 0)) {
+        Token t = peek(0);
+        advance();
+        ASTNode* node = createNode(NODE_BINARY, t.value);
+        node->bitlength = t.bitlength;
+        return node;
+    }
+
     if (_is(TOKEN_OPERATOR, 0, "-", NULL)) {
         advance();
         ASTNode* operand = parsePrimaryExpression();
@@ -878,7 +886,11 @@ ASTNode* parseStatement() {
             while (!is(TOKEN_EOF, 0)) {
                 if (parserError) break;
                 if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { 
+                    ASTNode* elsenode = parseStatement(); 
+                    if (elsenode) {addChild(node, elsenode);} 
+                    break; 
+                }
                 ASTNode* stmt = parseStatement();
                 if (stmt) addChild(body, stmt);
                 else if (!parserError) advance();
@@ -893,7 +905,11 @@ ASTNode* parseStatement() {
             while (!is(TOKEN_EOF, 0)) {
                 if (parserError) break;
                 if (_is(TOKEN_KEYWORD, 0, "end", NULL)) { advance(); break; }
-                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { ASTNode* elsenode = parseStatement(); if (elsenode) {addChild(body, elsenode);} break; }
+                else if (_is(TOKEN_KEYWORD, 0, "else", NULL)) { 
+                    ASTNode* elsenode = parseStatement(); 
+                    if (elsenode) {addChild(node, elsenode);} 
+                    break; 
+                }
                 ASTNode* stmt = parseStatement();
                 if (stmt) addChild(body, stmt);
                 else if (!parserError) advance();

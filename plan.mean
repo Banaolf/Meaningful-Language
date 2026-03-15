@@ -1,10 +1,2 @@
-set stringOrInt = random(1) ? "Its a string!" : 011010010110111001110100 ::Ternary is enroute
-
-set myFunc(x@int:not_zero=5, y@pointer) :: Setting default arguments is planned
-    y^ = y^ / x
-end
-
-set int = 394
-set anotherInt = 00110111
 set myInterpolatedString = #"One number: {int} And another: {anotherInt}" ::Interpolated strings with # are planned
 $#"echo {int}" ::Even on commands!

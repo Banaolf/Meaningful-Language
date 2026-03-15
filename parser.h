@@ -43,7 +43,8 @@ typedef enum {
     NODE_DEREF,
     NODE_CREATEFILE,
     NODE_TERNARY,
-    NODE_COLON
+    NODE_COLON,
+    NODE_BINARY
 } NodeType;
 
 typedef struct ASTNode {
@@ -56,6 +57,7 @@ typedef struct ASTNode {
     struct ASTNode** children; 
     int childCount;
     int childCapacity;
+    int bitlength;
 } ASTNode;
 
 typedef enum {

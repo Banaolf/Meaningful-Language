@@ -13,7 +13,7 @@
 .installer/
 bin/
 build.cmd
-/bin
+/dist
 *.deb
 run_tests.ps1
 makefile

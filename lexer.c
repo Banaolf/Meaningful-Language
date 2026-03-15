@@ -36,6 +36,20 @@ int line = 0;
 int character = 0;
 // Add a token to the list and grow if full
 void addToken(TokenStream* stream, TokenType type, char* value) {
+    if (value[0] == '0' && value[1] == 'b') {
+        int count = 0;
+        for (int i = 2; i < strlen(value); i++) {
+            char chara = value[i];
+            if (chara != '1' && chara != '0') {
+                fprintf(stderr, "Malformed Binary\n");
+                value = "MALFORMED_BINARY";
+                type = ERR;
+                break;
+            }
+            count++;
+        }
+        stream->tokens[stream->size].bitlength = count;
+    }
     if (stream->size == stream->capacity) {
         stream->capacity *= 2;
         stream->tokens = realloc(stream->tokens, sizeof(Token) * stream->capacity);
@@ -128,6 +142,18 @@ TokenStream* lex(char* source) {
         if (*c == '#') {
             addToken(stream, TOKEN_HASHTAG, "#"); //COMING SOON
             c++;
+            continue;
+        }
+
+        if (*c == '0' && *(c+1) == 'b') {
+            char buffer[256] = {0};
+            int i = 0;
+            c+=2;
+            while (*c == '0' || *c == '1') {
+                character++;
+                buffer[i++] = *c++;
+            }
+            addToken(stream, TOKEN_BINARY, buffer);
             continue;
         }
 

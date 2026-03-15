@@ -28,6 +28,7 @@ typedef enum {
     TOKEN_CARET, // ^ for pointers
     TOKEN_HASHTAG, // # for interpolated strings
     TOKEN_QUESTION_MARK, //? for ternary operator
+    TOKEN_BINARY, //0b010101010
     ERR // For when there is an error during lexing (e.g: Unknown character)
 } TokenType;
 
@@ -36,6 +37,7 @@ typedef struct {
     char* value; 
     int ln;
     int character;
+    int bitlength;
 } Token;
 
 typedef struct {

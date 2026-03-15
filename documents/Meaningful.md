@@ -1,5 +1,5 @@
 # Meaningful Language Documentation
-**Version**: ALPHA.0.99.54.2 **License**: BMLL 2.0
+**License**: BMLL 2.0
 
 Meaningful is an interpreted, dynamically typed language written in C. It features garbage collection, a REPL, and support for complex data structures like lists and dictionaries.
 

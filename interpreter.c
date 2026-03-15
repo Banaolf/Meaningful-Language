@@ -60,7 +60,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.3.0.1"
+#define VERSION "BETA.1.3.1.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -84,7 +84,8 @@ typedef enum {
     OBJ_DICT,
     OBJ_FILE,
     OBJ_POINTER,
-    OBJ_BOXED
+    OBJ_BOXED,
+    OBJ_BINARY
 } ObjectType;
 
 // The header for all heap-allocated objects in the language
@@ -126,6 +127,12 @@ typedef struct ObjPointer {
     char* targetName;
 } ObjPointer;
 
+typedef struct ObjBinary {
+    Object obj;
+    int bitlength;
+    char* byte;
+} ObjBinary;
+
 //Helpful macros :)
 #define IS_OBJECT(value)    ((value).type == VAL_OBJECT)
 #define AS_OBJECT(value)    ((value).as.obj)
@@ -139,6 +146,7 @@ typedef struct ObjPointer {
 #define AS_FILE(value)      ((ObjFile*)AS_OBJECT(value))
 #define AS_POINTER(value) ((ObjPointer*)AS_OBJECT(value))
 #define AS_BOXED(value) ((ObjBoxed*)AS_OBJECT(value))
+#define AS_BINARY(value) ((ObjBinary*)AS_OBJECT(value))
 
 char currentFileDir[512];
 
@@ -262,6 +270,7 @@ ObjString* allocateString(char* chars, size_t length) {
 
 ValueList* allocateList(int capacity) {
     ValueList* list = (ValueList*)allocateObject(sizeof(ValueList), OBJ_LIST);
+    bytesAllocated += sizeof(Value) * capacity;
     list->items = malloc(sizeof(Value) * capacity);
     list->count = 0;
     list->capacity = capacity;
@@ -311,6 +320,9 @@ void markObject(Object* object) {
         case OBJ_BOXED: {
             ObjBoxed* box = (ObjBoxed*)object;
             markValue(box->value);
+            break;
+        }
+        case OBJ_BINARY: {
             break;
         }
     }
@@ -377,6 +389,14 @@ static void freeObject(Object* object) {
         }
         case OBJ_BOXED: {
             bytesAllocated -= sizeof(ObjBoxed);
+            free(object);
+            break;
+        }
+        case OBJ_BINARY: {
+            ObjBinary* bin = (ObjBinary*)object;
+            free(bin->byte);
+            bytesAllocated -= bin->bitlength;
+            bytesAllocated -= sizeof(ObjBinary);
             free(object);
             break;
         }
@@ -721,6 +741,7 @@ void printValueRecursive(Value val) {
     else if (val.type == VAL_NON) printf("non");
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("%s", AS_CSTRING(val));
+    else if (IS_OBJ_TYPE(val, OBJ_FILE)) printf("%s", val.as.func->name);
     else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
     else if (IS_OBJ_TYPE(val, OBJ_BOXED)) printValueRecursive(((ObjBoxed*)val.as.obj)->value);
     else if (IS_OBJ_TYPE(val, OBJ_POINTER)) {
@@ -756,8 +777,9 @@ void printValueReprRecursive(Value val) { //Sorry for the repetition, I couldn't
     else if (val.type == VAL_NON) printf("non");
     else if (val.type == VAL_FLOAT) printf("%g", val.as.decimal);
     else if (IS_OBJ_TYPE(val, OBJ_STRING)) printf("\"%s\"", AS_CSTRING(val));
+    else if (IS_OBJ_TYPE(val, OBJ_FILE)) printf("%s", AS_FILE(val)->path);
     else if (val.type == VAL_FUNCTION) printf("<function %s>", val.as.func->name);
-    else if (IS_OBJ_TYPE(val, OBJ_BOXED)) printValueReprRecursive(((ObjBoxed*)val.as.obj)->value);
+    else if (IS_OBJ_TYPE(val, OBJ_BOXED)) printValueReprRecursive(AS_BOXED(val)->value);
     else if (IS_OBJ_TYPE(val, OBJ_POINTER)) {
         ObjPointer* p = (ObjPointer*)val.as.obj;
         if (p->pointee == NULL) printf("\"<pointer -> (invalidated)>\"");
@@ -889,10 +911,10 @@ bool checkType(char* notation, Value val) {
     if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
     if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
     if (strcmp(notation, "pointer") == 0) return IS_OBJ_TYPE(val, OBJ_POINTER);
+    if (strcmp(notation, "bit")) return IS_OBJ_TYPE(val, OBJ_BINARY);
     if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
     if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
-    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION; 
-    //Note: Handle @optional elsewhere
+    if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION;
     return false;
 }
 
@@ -956,8 +978,43 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_STRING) {
         return make(VAL_OBJECT, (Object*)allocateString(node->value, strlen(node->value)));
     }
+    if (node->type == NODE_BINARY) {
+        ObjBinary* obj = AS_BINARY(make(VAL_OBJECT, allocateObject(sizeof(ObjBinary), OBJ_BINARY))); 
+    }
     if (node->type == NODE_NON) {
         return make(VAL_NON);
+    }
+    if (node->type == NODE_LIST_LITERAL) {
+        ValueList* list = allocateList(node->childCount > 0 ? node->childCount : 1);
+        list->count = node->childCount;
+        for (int i = 0; i < list->count; i++) {
+            list->items[i] = evaluate(node->children[i]);
+            if (list->items[i].type == VAL_ERR) return list->items[i];
+        }
+        return make(VAL_OBJECT, (Object*)list);
+    }
+    if (node->type == NODE_DICT_LITERAL) {
+        ValueDict* dict = allocateDict();
+        for (int i = 0; i < node->childCount; i += 2) {
+            Value keyVal = evaluate(node->children[i]);
+            if (!IS_OBJ_TYPE(keyVal, OBJ_STRING)) return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
+
+            Value val = evaluate(node->children[i+1]);
+            if (val.type == VAL_ERR) return val;
+
+            char* key = AS_CSTRING(keyVal);
+            DictEntry* entry;
+            HASH_FIND_STR(dict->head, key, entry);
+            if (entry) {
+                entry->value = val;
+            } else {
+                entry = malloc(sizeof(DictEntry));
+                entry->key = strdup(key);
+                entry->value = val;
+                HASH_ADD_STR(dict->head, key, entry);
+            }
+        }
+        return make(VAL_OBJECT, (Object*)dict);
     }
     
     // 2. Variables
@@ -1435,42 +1492,6 @@ Value evaluate(ASTNode* node) {
         return entry->value;
     }
 
-    // List
-    if (node->type == NODE_LIST_LITERAL) {
-        ValueList* list = allocateList(node->childCount > 0 ? node->childCount : 1);
-        list->count = node->childCount;
-        for (int i = 0; i < list->count; i++) {
-            list->items[i] = evaluate(node->children[i]);
-            if (list->items[i].type == VAL_ERR) return list->items[i];
-        }
-        return make(VAL_OBJECT, (Object*)list);
-    }
-
-    // Dictionary
-    if (node->type == NODE_DICT_LITERAL) {
-        ValueDict* dict = allocateDict();
-        for (int i = 0; i < node->childCount; i += 2) {
-            Value keyVal = evaluate(node->children[i]);
-            if (!IS_OBJ_TYPE(keyVal, OBJ_STRING)) return throwException(TypeException, "TypeException: Dictionary keys must be strings.\n");
-
-            Value val = evaluate(node->children[i+1]);
-            if (val.type == VAL_ERR) return val;
-
-            char* key = AS_CSTRING(keyVal);
-            DictEntry* entry;
-            HASH_FIND_STR(dict->head, key, entry);
-            if (entry) {
-                entry->value = val;
-            } else {
-                entry = malloc(sizeof(DictEntry));
-                entry->key = strdup(key);
-                entry->value = val;
-                HASH_ADD_STR(dict->head, key, entry);
-            }
-        }
-        return make(VAL_OBJECT, (Object*)dict);
-    }
-
     // 6.3 Index Access
     if (node->type == NODE_INDEX_ACCESS) {
         Value collection = evaluate(node->left);
@@ -1540,23 +1561,22 @@ Value evaluate(ASTNode* node) {
 
     //8.1 Else statements
     if (node->type == NODE_ELSE) {
-        if (node->childCount == 2) {
+        if (node->children[0]->type != NODE_PROGRAM) {
             Value cond = evaluate(node->children[0]);
             if (cond.type == VAL_ERR) return cond;
             if (!is_falsy(cond)) {
-                Value res = evaluate(node->children[1]);
+                Value res = evaluate(node->children[1]); // body
                 if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
             } else if (node->childCount == 3) {
-                Value res = evaluate(node->children[2]);
+                Value res = evaluate(node->children[2]); // chain
                 if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
             }
             return make(VAL_VOID);
-        } else {
-            Value res = evaluate(node->children[0]);
-            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
-            
-            return make(VAL_VOID);
         }
+        // plain else
+        Value res = evaluate(node->children[0]); // body is children[0]
+        if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+        return make(VAL_VOID);
     }
 
     //8.2 Ternary
@@ -1962,6 +1982,19 @@ Value native_length(int argc, Value* args) {
     if (IS_OBJ_TYPE(val, OBJ_STRING)) return make(VAL_INT, AS_STRING(val)->length);
     if (IS_OBJ_TYPE(val, OBJ_DICT))   return make(VAL_INT, (int)HASH_COUNT(AS_DICT(val)->head));
     if (IS_OBJ_TYPE(val, OBJ_LIST))   return make(VAL_INT, AS_LIST(val)->count);
+    if (IS_OBJ_TYPE(val, OBJ_BOXED)) {
+        Value ourVal = AS_BOXED(val)->value;
+        if (isVal(ourVal, VAL_INT)) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%d", val.as.number);
+            return make(VAL_INT, (int)strlen(buf));
+        }
+        if (isVal(ourVal, VAL_FLOAT)) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", val.as.decimal);
+            return make(VAL_INT, (int)strlen(buf));
+        }
+    }
     if (isVal(val, VAL_INT)) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", val.as.number);
@@ -2166,6 +2199,10 @@ int main(int argc, char *argv[]) {
         if (argc != 2) { printf("Usage: meaningful -lic/--licence"); return 3; }
         OPEN_URL("https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
         return 0;
+    } else if (strcmp(argv[1], "-docs") || strcmp(argv[1], "--documentation")){
+        if (argc != 2 ) {printf("Usage: meaningful -docs / --documentation"); return 3;}
+        OPEN_URL("https://github.com/Banaolf/Meaningful-Language/blob/main/documents/Meaningful.md");
+        return 0;
     } else if (strcmp(argv[1], "-t") == 0 || strcmp(argv[1], "--test") == 0) {
         if (argc != 3) { printf("Usage: meaningful -t/--test [name].mean"); return 3; }
         char* src = readFile(argv[2]);
@@ -2240,6 +2277,6 @@ General failure: 1
 File not found: 2
 Malformed flags: 3
 Runtime Error: 4
-Parser Error: 5 Not being used rn
-Lexer Error 6 Not being used rn
+Parser Error: 5
+Lexer Error 6
 */
