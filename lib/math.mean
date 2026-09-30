@@ -4,7 +4,7 @@
 set pi = 3.141592
 set e = 2.718281
 set tau = 6.283185
-set inf = 2147483647 :: MAX INT
+set int32max = 2147483647 :: MAX INT
 
 set floor(x)
     return x - (x %% 1)
