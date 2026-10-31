@@ -1286,7 +1286,7 @@ ASTNode* parseFile(const TokenStream Tokens) {
             continue;
         }
 
-        ASTNode* stmt = parseStatement();
+        ASTNode* stmt = parseStatement(); //test
 
         if (stmt) {
             addChild(root, stmt);
