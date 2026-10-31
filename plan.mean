@@ -1,2 +1,0 @@
-set myInterpolatedString = #"One number: {int} And another: {anotherInt}" ::Interpolated strings with # are planned
-$#"echo {int}" ::Even on commands!
