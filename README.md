@@ -78,10 +78,11 @@ Or double click it
 If there is an `msi` for that release, just download it and double click it, accept the licence and install. May prompt you for admin priviliges
 
 ### Build from source
-rename the makefile.lin (or .win if you are in windows) and run `make`if you have make installed, else
-```bash
-gcc interpreter.c lexer.c parser.c -o meaningful -lm
-```
+Must have CMake
+- Make a 'build' directory
+- Run `cmake .. -DCMAKE_BUILD_TYPE=Release`
+- Run `cmake --build`
+That should make the executable.
 
 ---
 
