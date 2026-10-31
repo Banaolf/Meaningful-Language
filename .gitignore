@@ -1,0 +1,23 @@
+# Compiled Object files
+*.o
+*.a
+
+# Executables
+*.exe
+*.out
+
+# IDE/Editor junk
+.vscode/    
+.clangd
+.clang-format
+.installer/
+bin/
+build.cmd
+/dist
+*.deb
+run_tests.ps1
+makefile
+
+#Other
+build/
+out/
