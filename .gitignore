@@ -17,6 +17,7 @@ build.cmd
 *.deb
 run_tests.ps1
 makefile
+.idea/
 
 #Other
 build/
