@@ -1,0 +1,28 @@
+name: Test Compiling Meaningful
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download code
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Smoke test
+        run: ./build/bin/meaningful --version
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: meaningful-linux
+          path: build/bin/meaningful
