@@ -360,10 +360,8 @@ ASTNode* parsePrimaryExpression() {
         advance();
         ASTNode* operand = parsePrimaryExpression();
         if (!operand) return NULL;
-        ASTNode* zero = createNode(NODE_NUMBER, "0");
-        ASTNode* node = createNode(NODE_OPERATOR, "==");
-        node->left = operand;
-        node->right = zero;
+        ASTNode* node = createNode(NODE_UNARY, "not");
+        node->right = operand;
         return node;
     }
 

@@ -53,7 +53,7 @@
     #define LSLEEPS(s) sleep(s)
     #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #define OPEN_URL(url) system("firefox " url " &")
-#endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
+#endif
 #include <stddef.h>
 #include <stdarg.h>
 #include <math.h>
@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.2.0"
+#define VERSION "BETA.1.4.2.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -1125,7 +1125,7 @@ Value evaluate(ASTNode* node) {
         if (strcmp(node->value, "+") == 0 || strcmp(node->value, "-") == 0 ||
             strcmp(node->value, "*") == 0 || strcmp(node->value, "/") == 0 ||
             strcmp(node->value, "//") == 0 || strcmp(node->value, "**") == 0 ||
-            strcmp(node->value, "%%") == 0 || strcmp(node->value, "-/") == 0 ) {
+            strcmp(node->value, "%") == 0 || strcmp(node->value, "-/") == 0 ) {
 
             bool eitherFloat = (left.type == VAL_FLOAT || right.type == VAL_FLOAT);
             float l = left.type == VAL_FLOAT ? left.as.decimal : (float)left.as.number;
@@ -1156,7 +1156,7 @@ Value evaluate(ASTNode* node) {
                 float res = powf(l, r);
                 return eitherFloat ? make(VAL_FLOAT, res) : make(VAL_INT, (int)res);
             }
-            if (strcmp(node->value, "%%") == 0) {
+            if (strcmp(node->value, "%") == 0) {
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
                 return make(VAL_INT, (int)l % (int)r);
             }
@@ -1172,6 +1172,7 @@ Value evaluate(ASTNode* node) {
                 return make(VAL_FLOAT, result);
             }
         }
+        return throwException(RuntimeException, "Unknown operator '%s'\n", node->value);
     }
 
     if (node->type == NODE_COMPARRISON) {
