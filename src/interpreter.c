@@ -1,8 +1,9 @@
 #include "parser.h"
 #include "lexer.h"
+#include "err_handler.h"
 #include <ctype.h>
 #include <stddef.h>
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <sys/types.h>
 #include <time.h>
 
@@ -18,7 +19,7 @@
     #define LSLEEPS(s) sleep(s)
     #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #if TARGET_OS_IPHONE
-        #define OPEN_URL(url) (void)0 
+        #define OPEN_URL(url) (void)0
     #else
         #define OPEN_URL(url) system("open " url)
     #endif
@@ -52,6 +53,7 @@
     #define LSLEEPS(s) sleep(s)
     #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #define OPEN_URL(url) system("firefox " url " &")
+#endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
 #endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
 #include <stddef.h>
 #include <stdarg.h>
@@ -219,6 +221,16 @@ Value make(ValueType type, ...) {
 }
 
 Exception makeException(ExceptionType type, char* message) {Exception exc;exc.type = type;exc.message = message;return exc;}
+// Clears the global error state (frees its message). Used when an error was
+// raised but then handled/discarded, and by the REPL between statements.
+static void clearError(void) {
+    free(GLOBAL_ERROR.message);
+    GLOBAL_ERROR.type = ERRTY_Clean;
+    GLOBAL_ERROR.message = NULL;
+    GLOBAL_ERROR.line = 0;
+    GLOBAL_ERROR.column = 0;
+}
+
 Value throwException(ExceptionType type, const char* fmt, ...) {
     char* buffer = malloc(1024);
     va_list args;
@@ -226,10 +238,21 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
     vsnprintf(buffer, 1024, fmt, args);
     va_end(args);
 
+    // The handler adds its own formatting, so drop the trailing newline.
+    size_t blen = strlen(buffer);
+    while (blen > 0 && buffer[blen - 1] == '\n') buffer[--blen] = '\0';
+
     Value v;
     v.type = VAL_ERR;
     v.as.exc = makeException(type, buffer);
-    printf("%s\n",v.as.exc.message);
+
+    // Record in the global error handler (set_err duplicates the message).
+    error_t err;
+    err.type = (type == SyntaxException) ? ERRTY_SyntaxError : ERRTY_InternalError;
+    err.message = buffer;
+    err.line = 0;
+    err.column = 0;
+    set_err(&err);
     return v;
 }
 
@@ -237,7 +260,7 @@ Value throwException(ExceptionType type, const char* fmt, ...) {
 
 void collectGarbage();
 
-Object* allObjects = NULL; 
+Object* allObjects = NULL;
 int bytesAllocated;
 int nextGC = 1024 * 1024; //1MB
 
@@ -651,23 +674,58 @@ Symbol* findSymbol(char* name) {
 }
 
 bool checkType(char* notation, Value val);bool checkCondition(char* condition, Value val);Value evaluate(ASTNode* node);//Forward declarationsss
+void freeSymbolTable();
 
+// --- Error handler integration ---
+// Main program's resources, tracked so a halt can free them too.
+static char* gProgSrc = NULL;
+static TokenStream* gProgStream = NULL;
+static ASTNode* gProgRoot = NULL;
+// The REPL reports and clears errors itself instead of exiting.
+static bool gReplMode = false;
+
+// Checks for an error; if there is one, frees all interpreter memory and
+// halts (prints the error and exits). Does nothing when there is no error.
+static void haltIfError(void) {
+    if (gReplMode) return;
+    if (hasError) {
+        if (gProgRoot)   { freeAST(gProgRoot);        gProgRoot = NULL; }
+        if (gProgStream) { finalCleanup(gProgStream); gProgStream = NULL; }
+        if (gProgSrc)    { free(gProgSrc);            gProgSrc = NULL; }
+        freeSymbolTable();
+        collectGarbage();
+        currentFile = NULL;
+        halt();
+    }
+}
+
+static Value callSymbolImpl(Symbol* callable, int argCount, Value* argValues);
+
+// Every function call goes through here: check for an error before the
+// function starts and after it ends (all exit paths), halting if one exists.
 Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
+    haltIfError();
+    Value result = callSymbolImpl(callable, argCount, argValues);
+    haltIfError();
+    return result;
+}
+
+static Value callSymbolImpl(Symbol* callable, int argCount, Value* argValues) {
     Value result = make(VAL_VOID);
-    
+
     if (callable->nativeFunc) {
         return callable->nativeFunc(argCount, argValues);
     }
-    
+
     ASTNode* funcDef = callable->funcNode;
     int paramCount = funcDef->childCount - 1;
-    
+
     if (paramCount > argCount) {
         return throwException(ArgumentException,
             "ArgumentException: Function '%s' expected %d arguments but got %d.\n",
             funcDef->value, paramCount, argCount);
     }
-    
+
     enterScope();
     for (int i = 0; i < paramCount; i++) {
         ASTNode* param = funcDef->children[i];
@@ -700,7 +758,7 @@ Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
         }
         defineVariable(param->value, arg);
     }
-    
+
     ASTNode* body = funcDef->children[paramCount];
     if (body && body->children) {
         for (int i = 0; i < body->childCount; i++) {
@@ -715,7 +773,7 @@ Value callSymbol(Symbol* callable, int argCount, Value* argValues) {
             if (stmtVal.type == VAL_ERR) { result = stmtVal; break; }
         }
     }
-    
+
     exitScope();
     if (result.type == VAL_RETURN) result.type = result.returnType;
     return result;
@@ -911,7 +969,7 @@ bool checkType(char* notation, Value val) {
     if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
     if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
     if (strcmp(notation, "pointer") == 0) return IS_OBJ_TYPE(val, OBJ_POINTER);
-    if (strcmp(notation, "bit")) return IS_OBJ_TYPE(val, OBJ_BINARY);
+    if (strcmp(notation, "bit") == 0) return IS_OBJ_TYPE(val, OBJ_BINARY);
     if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
     if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
     if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION;
@@ -934,7 +992,7 @@ bool checkCondition(char* condition, Value val) {
             if (IS_OBJ_TYPE(val, OBJ_STRING)) return AS_STRING(val)->length > 0;
             if (IS_OBJ_TYPE(val, OBJ_LIST))   return AS_LIST(val)->count > 0;
             if (IS_OBJ_TYPE(val, OBJ_DICT))   return HASH_COUNT(AS_DICT(val)->head) > 0;
-            if (IS_OBJ_TYPE(val, OBJ_FILE)) 
+            if (IS_OBJ_TYPE(val, OBJ_FILE))
             return true;
         }
     } else if (val.type == VAL_INT || val.type == VAL_FLOAT) { //so general numbers
@@ -950,7 +1008,7 @@ bool checkCondition(char* condition, Value val) {
         }
         if (strcmp(condition, "not_zero") == 0) {
             if (val.type == VAL_INT) return val.as.number != 0;
-            if (val.type == VAL_INT) return val.as.decimal != 0.0;
+            if (val.type == VAL_FLOAT) return val.as.decimal != 0.0;
             return true;
         }
     } else if (val.type == VAL_FUNCTION) {
@@ -979,7 +1037,7 @@ Value evaluate(ASTNode* node) {
         return make(VAL_OBJECT, (Object*)allocateString(node->value, strlen(node->value)));
     }
     if (node->type == NODE_BINARY) {
-        ObjBinary* obj = AS_BINARY(make(VAL_OBJECT, allocateObject(sizeof(ObjBinary), OBJ_BINARY))); 
+        ObjBinary* obj = AS_BINARY(make(VAL_OBJECT, allocateObject(sizeof(ObjBinary), OBJ_BINARY)));
     }
     if (node->type == NODE_NON) {
         return make(VAL_NON);
@@ -1016,13 +1074,16 @@ Value evaluate(ASTNode* node) {
         }
         return make(VAL_OBJECT, (Object*)dict);
     }
-    
+
     // 2. Variables
     if (node->type == NODE_VARIABLE) { // Prioritise variables over functions
         Value v = getVariable(node->value);
         if (v.type != VAL_ERR) return v;
         Symbol* callable = getCallable(node->value);
-        if (callable) return make(VAL_FUNCTION, callable);
+        if (callable) {
+            clearError(); // not a real error: the name is a function, not a variable
+            return make(VAL_FUNCTION, callable);
+        }
         return v; // return the original error
     }
 
@@ -1030,7 +1091,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_OPERATOR) {
         Value left = evaluate(node->left);
         if (left.type == VAL_ERR) return left;
-        
+
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
@@ -1080,7 +1141,7 @@ Value evaluate(ASTNode* node) {
             if (strcmp(node->value, "**") == 0) {
                 float res = powf(l, r);
                 return eitherFloat ? make(VAL_FLOAT, res) : make(VAL_INT, (int)res);
-            } 
+            }
             if (strcmp(node->value, "%%") == 0) {
                 if (r == 0) return throwException(DivideByZeroException, "DivideByZeroException: Division by zero.\n");
                 return make(VAL_INT, (int)l % (int)r);
@@ -1102,7 +1163,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_COMPARRISON) {
         Value left = evaluate(node->left);
         if (left.type == VAL_ERR) return left;
-        
+
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
@@ -1120,7 +1181,7 @@ Value evaluate(ASTNode* node) {
     if (node->type == NODE_LOGIC){
         Value left = evaluate(node->left);
         if (left.type == VAL_ERR) return left;
-        
+
         Value right = evaluate(node->right);
         if (right.type == VAL_ERR) return right;
 
@@ -1209,7 +1270,7 @@ Value evaluate(ASTNode* node) {
             ObjPointer* p = (ObjPointer*)ptr.as.obj;
             if (p->pointee == NULL)
                 return throwException(NullPointerException, "NullPointerException: Pointer '%s' has been invalidated.\n", p->pointeeName);
-            
+
             if (IS_OBJ_TYPE(*p->pointee, OBJ_BOXED))
                 ((ObjBoxed*)p->pointee->as.obj)->value = rvalue;
             else
@@ -1230,7 +1291,7 @@ Value evaluate(ASTNode* node) {
             if (strcmp(right, "int") == 0) {
                 if (var.type == VAL_OBJECT && IS_OBJ_TYPE(var, OBJ_STRING)) {
                     for (int i = 0; i < AS_STRING(var)->length; i++) {
-                        if (!isdigit((unsigned char)AS_CSTRING(var)[i])) return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");                        
+                        if (!isdigit((unsigned char)AS_CSTRING(var)[i])) return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");
                     }
                     return make(VAL_INT, atoi(AS_CSTRING(var)));
                 } else if (var.type == VAL_FLOAT) {
@@ -1254,7 +1315,7 @@ Value evaluate(ASTNode* node) {
             } else if (strcmp(right, "float") == 0) {
                 if (var.type == VAL_OBJECT && IS_OBJ_TYPE(var, OBJ_STRING)) {
                     for (int i = 0; i < AS_STRING(var)->length; i++) {
-                        if (!isdigit((unsigned char)AS_CSTRING(var)[i]) || (unsigned char)AS_CSTRING(var)[i] != '.') return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");                        
+                        if (!isdigit((unsigned char)AS_CSTRING(var)[i]) || (unsigned char)AS_CSTRING(var)[i] != '.') return throwException(TypeException, "TypeException: All characters must be digits in order to convert to integer");
                     }
                     return make(VAL_FLOAT, (float)atof(AS_CSTRING(var)));
                 } else if (var.type == VAL_FLOAT) {
@@ -1299,7 +1360,7 @@ Value evaluate(ASTNode* node) {
         free(argValues);
         return result;
     }
-    
+
     // 6.1 Method Calls
     if (node->type == NODE_METHOD_CALL) {
         Value obj = evaluate(node->left);
@@ -1422,7 +1483,7 @@ Value evaluate(ASTNode* node) {
         // --- Dict methods ---
         } else if (IS_OBJ_TYPE(obj, OBJ_DICT)) {
             ValueDict* dict = AS_DICT(obj);
-            
+
             DictEntry* entry;
             HASH_FIND_STR(dict->head, method, entry);
             if (entry && entry->value.type == VAL_FUNCTION) {
@@ -1590,6 +1651,7 @@ Value evaluate(ASTNode* node) {
     // 9. While Loops
     if (node->type == NODE_WHILE) {
         while (true) {
+            haltIfError();
             Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
             if (is_falsy(cond)) break;
             Value res = evaluate(node->children[1]);
@@ -1607,6 +1669,7 @@ Value evaluate(ASTNode* node) {
         const int timesInt = times.as.number;
         if (timesInt <= 0) return throwException(ArgumentException, "ArgumentException: repeat expects count to be more than 0.\n");
         for (int i = 0; i < timesInt; i++) {
+            haltIfError();
             Value res = evaluate(node->children[1]);
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
@@ -1625,6 +1688,7 @@ Value evaluate(ASTNode* node) {
         if (IS_OBJ_TYPE(inRight, OBJ_DICT)) {
             DictEntry *el, *tmp;
             HASH_ITER(hh, AS_DICT(inRight)->head, el, tmp) {
+                haltIfError();
                 enterScope();
                 defineVariable(nameLeft, make(VAL_OBJECT, (Object*)allocateString(el->key, strlen(el->key))));
                 Value body = evaluate(node->children[1]);
@@ -1634,6 +1698,7 @@ Value evaluate(ASTNode* node) {
             }
         } else if (IS_OBJ_TYPE(inRight, OBJ_STRING)) {
             for (int I = 0; I < AS_STRING(inRight)->length; I++) {
+                haltIfError();
                 enterScope();
                 char ch[2] = { AS_CSTRING(inRight)[I], '\0' };
                 defineVariable(nameLeft, make(VAL_OBJECT, (Object*)allocateString(ch, 1)));
@@ -1644,6 +1709,7 @@ Value evaluate(ASTNode* node) {
             }
         } else if (IS_OBJ_TYPE(inRight, OBJ_LIST)) {
             for (int I = 0; I < AS_LIST(inRight)->count; I++) {
+                haltIfError();
                 enterScope();
                 defineVariable(nameLeft, AS_LIST(inRight)->items[I]);
                 Value body = evaluate(node->children[1]);
@@ -2161,11 +2227,17 @@ void runREPL() {
         TokenStream* stream = lex(source);
         ASTNode* root = parseFile(*stream);
         if (root) {
-            Value rslt = evaluate(root);
-            if (rslt.type == VAL_ERR) { freeAST(root); finalCleanup(stream); memset(source, 0, sizeof(source)); continue; }
+            (void)evaluate(root);
             freeAST(root);
         }
         finalCleanup(stream);
+        // The REPL must survive errors: report, clear, and keep going.
+        if (hasError) {
+            fprintf(stderr, "[%s]: %s\n",
+                GLOBAL_ERROR.type == ERRTY_SyntaxError ? "SyntaxError" : "InternalError",
+                GLOBAL_ERROR.message ? GLOBAL_ERROR.message : "unknown error");
+            clearError();
+        }
         memset(source, 0, sizeof(source));
     }
 
@@ -2184,6 +2256,7 @@ int main(int argc, char *argv[]) {
     initSymbolTable();
     initNatives();
     if (argc == 1) {
+        gReplMode = true;
         runREPL();
         return 0;
     }
@@ -2193,13 +2266,13 @@ int main(int argc, char *argv[]) {
         return 0;
     } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0) {
         if (argc != 2) { printf("Usage: meaningful -src/--source"); return 3; }
-        OPEN_URL("ttps://github.com/Banaolf/Meaningful-Language");
+        OPEN_URL("https://github.com/Banaolf/Meaningful-Language");
         return 0;
     } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0) {
         if (argc != 2) { printf("Usage: meaningful -lic/--licence"); return 3; }
         OPEN_URL("https://github.com/Banaolf/Meaningful-Language/blob/main/LICENCE");
         return 0;
-    } else if (strcmp(argv[1], "-docs") || strcmp(argv[1], "--documentation")){
+    } else if (strcmp(argv[1], "-docs") == 0 || strcmp(argv[1], "--documentation") == 0){
         if (argc != 2 ) {printf("Usage: meaningful -docs / --documentation"); return 3;}
         OPEN_URL("https://github.com/Banaolf/Meaningful-Language/blob/main/documents/Meaningful.md");
         return 0;
@@ -2209,6 +2282,7 @@ int main(int argc, char *argv[]) {
         if (strcmp(src, "") == 0) exit(2);
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
+        gProgSrc = src; gProgStream = stream; gProgRoot = root;
         if (root) {
             Value result = evaluate(root);
             if (result.type == VAL_ERR) {
@@ -2232,16 +2306,21 @@ int main(int argc, char *argv[]) {
         strncpy(currentFileDir, argv[1], sizeof(currentFileDir));
         char* lastSlash = strrchr(currentFileDir, '/');
         if (lastSlash) *(lastSlash + 1) = '\0';
-        else currentFileDir[0] = '\0'; 
+        else currentFileDir[0] = '\0';
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
         finalCleanup(stream);
         free(src);
         if (root) {
             freeAST(root);
+            if (hasError) { freeSymbolTable(); collectGarbage(); halt(); }
             printf("OK\n");
             return 0;
         } else {
+            // parser error: free everything, then halt if the handler recorded one
+            freeSymbolTable();
+            collectGarbage();
+            if (hasError) halt();
             return 5; // parser error exit code
         }
     } else {
@@ -2253,6 +2332,7 @@ int main(int argc, char *argv[]) {
         else currentFileDir[0] = '\0';
         TokenStream* stream = lex(src);
         ASTNode* root = parseFile(*stream);
+        gProgSrc = src; gProgStream = stream; gProgRoot = root;
         if (root) {
             Value result = evaluate(root);
             if (result.type == VAL_ERR) {returningVal = 4; freeAST(root); finalCleanup(stream); free(src); goto end_of_interpreter;}
@@ -2260,23 +2340,17 @@ int main(int argc, char *argv[]) {
         }
         finalCleanup(stream);
         free(src);
-        returningVal = 0; 
+        returningVal = 0;
         goto end_of_interpreter;
     }
     end_of_interpreter: //Added just for -t
+        // The branches above already freed the program's source/tokens/AST.
+        gProgSrc = NULL; gProgStream = NULL; gProgRoot = NULL;
         freeSymbolTable();
         collectGarbage();
         currentFile = NULL;
         free(currentFile);
+        // End of program: memory is freed, so halt now if an error was recorded.
+        if (hasError) halt();
         return returningVal;
 }
-/*
-Exit codes
-Pass: 0
-General failure: 1
-File not found: 2
-Malformed flags: 3
-Runtime Error: 4
-Parser Error: 5
-Lexer Error 6
-*/
