@@ -58,6 +58,7 @@ typedef struct ASTNode {
     int childCount;
     int childCapacity;
     int bitlength;
+    int isDeclaration;
 } ASTNode;
 
 typedef enum {

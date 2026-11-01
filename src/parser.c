@@ -178,6 +178,8 @@ static ASTNode* createNode(const NodeType type, const char* value) {
     node->children = NULL;
     node->childCapacity = 0;
     node->childCount = 0;
+    node->bitlength = 0;
+    node->isDeclaration = 0;
     return node;
 }
 
@@ -844,6 +846,7 @@ ASTNode* parseStatement() {
                 return NULL;
             }
             ASTNode* node = createNode(NODE_ASSIGNMENT, "=");
+            node->isDeclaration = 1; // written with 'set': allowed to create the variable
             node->left = createNode(NODE_VARIABLE, nameToken.value);
             node->right = expr;
             return node;
@@ -916,7 +919,7 @@ ASTNode* parseStatement() {
     }
 
     if (is_multiple(TOKEN_KEYWORD, 0, "Import", NULL)){
-        advance(); // Eat 'import'
+        advance(); // Eat 'Import'
         ASTNode* expr = parseExpression();
         if (hasError) {
             freeAST(expr);

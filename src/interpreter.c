@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.3.1.1"
+#define VERSION "BETA.1.4.2.0"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -661,6 +661,14 @@ void defineVariable(char* name, Value val) {
     HASH_ADD_STR(currentScope->symbols, name, sym);
 }
 
+// Looks for a variable in the *current* scope only (used to detect redefinition).
+Symbol* findSymbolInCurrentScope(char* name) {
+    Symbol* s = NULL;
+    if (currentScope) HASH_FIND_STR(currentScope->symbols, name, s);
+    if (s && !s->funcNode && !s->nativeFunc) return s;
+    return NULL;
+}
+
 Symbol* findSymbol(char* name) {
     Scope* scope = currentScope;
     while (scope) {
@@ -791,6 +799,13 @@ void freeSymbolTable() {
         }
         free(scopeToFree);
     }
+}
+
+static Value evalScoped(ASTNode* body) {
+    enterScope();
+    Value res = evaluate(body);
+    exitScope();
+    return res;
 }
 
 void printValueRecursive(Value val) {
@@ -968,7 +983,7 @@ bool checkType(char* notation, Value val) {
     if (strcmp(notation, "dict")   == 0) return IS_OBJ_TYPE(val, OBJ_DICT);
     if (strcmp(notation, "file")   == 0) return IS_OBJ_TYPE(val, OBJ_FILE);
     if (strcmp(notation, "pointer") == 0) return IS_OBJ_TYPE(val, OBJ_POINTER);
-    if (strcmp(notation, "bit") == 0) return IS_OBJ_TYPE(val, OBJ_BINARY);
+    if (strcmp(notation, "bit")) return IS_OBJ_TYPE(val, OBJ_BINARY);
     if (strcmp(notation, "bool")   == 0) return val.type == VAL_INT; // booleans are ints internally
     if (strcmp(notation, "non") == 0) return val.type == VAL_NON;
     if (strcmp(notation, "function") == 0) return val.type == VAL_FUNCTION;
@@ -1007,7 +1022,7 @@ bool checkCondition(char* condition, Value val) {
         }
         if (strcmp(condition, "not_zero") == 0) {
             if (val.type == VAL_INT) return val.as.number != 0;
-            if (val.type == VAL_FLOAT) return val.as.decimal != 0.0;
+            if (val.type == VAL_INT) return val.as.decimal != 0.0;
             return true;
         }
     } else if (val.type == VAL_FUNCTION) {
@@ -1202,6 +1217,22 @@ Value evaluate(ASTNode* node) {
         if (rvalue.type == VAL_ERR) return rvalue;
 
         if (lvalue->type == NODE_VARIABLE) {
+            if (node->isDeclaration) {
+                // 'set x = ...' defines a NEW variable in the current scope.
+                if (findSymbolInCurrentScope(lvalue->value) != NULL) {
+                    return throwException(RuntimeException,
+                        "RuntimeException: Variable '%s' is already defined in this scope. Assign with '%s = ...' instead.\n",
+                        lvalue->value, lvalue->value);
+                }
+                defineVariable(lvalue->value, rvalue);
+                return rvalue;
+            }
+            // Plain 'x = ...' only updates an existing variable.
+            if (findSymbol(lvalue->value) == NULL) {
+                return throwException(IdentifierNotFoundException,
+                    "IdentifierNotFoundException: Variable '%s' not defined. Use 'set %s = ...' to define it.\n",
+                    lvalue->value, lvalue->value);
+            }
             setVariable(lvalue->value, rvalue);
             return rvalue;
         }
@@ -1610,10 +1641,10 @@ Value evaluate(ASTNode* node) {
         Value cond = evaluate(node->children[0]);
         if (cond.type == VAL_ERR) return cond;
         if (!is_falsy(cond)) {
-            Value res = evaluate(node->children[1]);
+            Value res = evalScoped(node->children[1]);
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         } else if (node->childCount == 3) {
-            Value res = evaluate(node->children[2]);
+            Value res = evaluate(node->children[2]); // else chain scopes its own body
             if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         }
         return make(VAL_VOID);
@@ -1625,7 +1656,7 @@ Value evaluate(ASTNode* node) {
             Value cond = evaluate(node->children[0]);
             if (cond.type == VAL_ERR) return cond;
             if (!is_falsy(cond)) {
-                Value res = evaluate(node->children[1]); // body
+                Value res = evalScoped(node->children[1]); // body
                 if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
             } else if (node->childCount == 3) {
                 Value res = evaluate(node->children[2]); // chain
@@ -1634,7 +1665,7 @@ Value evaluate(ASTNode* node) {
             return make(VAL_VOID);
         }
         // plain else
-        Value res = evaluate(node->children[0]); // body is children[0]
+        Value res = evalScoped(node->children[0]); // body is children[0]
         if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
         return make(VAL_VOID);
     }
@@ -1653,7 +1684,9 @@ Value evaluate(ASTNode* node) {
             haltIfError();
             Value cond = evaluate(node->children[0]);if (cond.type == VAL_ERR) return cond;
             if (is_falsy(cond)) break;
+            enterScope(); // each iteration gets its own scope, so 'set' inside is a fresh definition
             Value res = evaluate(node->children[1]);
+            exitScope();
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -1669,7 +1702,9 @@ Value evaluate(ASTNode* node) {
         if (timesInt <= 0) return throwException(ArgumentException, "ArgumentException: repeat expects count to be more than 0.\n");
         for (int i = 0; i < timesInt; i++) {
             haltIfError();
+            enterScope(); // per-iteration scope, same reason as 'while'
             Value res = evaluate(node->children[1]);
+            exitScope();
             if (res.type == VAL_ERR) return res;
             if (res.type == VAL_BREAK) break;
             if (res.type == VAL_RETURN) return res;
@@ -1814,16 +1849,16 @@ Value evaluate(ASTNode* node) {
         fread(file->contents, sizeof(char), size, file->file);
         file->contents[size] = '\0';
 
-        // Bind to variable if 'as name' was provided
-        if (node->value && strlen(node->value) > 0) {
-            setVariable(node->value, make(VAL_OBJECT, (Object*)file));
-        }
-
         // Set currentFile for file interaction statements inside the block
         ObjFile* previousFile = currentFile;
         currentFile = file;
 
+        enterScope();
+        if (node->value && strlen(node->value) > 0) {
+            defineVariable(node->value, make(VAL_OBJECT, (Object*)file));
+        }
         Value blockResult = evaluate(node->children[1]);
+        exitScope();
 
         // Always close on block exit
         if (file->isOpen && file->file != NULL) {
@@ -2265,7 +2300,7 @@ int main(int argc, char *argv[]) {
         return 0;
     } else if (strcmp(argv[1], "-src") == 0 || strcmp(argv[1], "--source") == 0) {
         if (argc != 2) { printf("Usage: meaningful -src/--source"); return 3; }
-        OPEN_URL("https://github.com/Banaolf/Meaningful-Language");
+        OPEN_URL("ttps://github.com/Banaolf/Meaningful-Language");
         return 0;
     } else if (strcmp(argv[1], "-lic") == 0 || strcmp(argv[1], "--licence") == 0) {
         if (argc != 2) { printf("Usage: meaningful -lic/--licence"); return 3; }
