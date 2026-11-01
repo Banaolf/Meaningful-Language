@@ -54,7 +54,6 @@
     #define TRUNCATE_FILE(f) ftruncate(fileno(f), 0)
     #define OPEN_URL(url) system("firefox " url " &")
 #endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
-#endif //Really specific system checking, for: No reason at all lollllll theres only a windows and linux installer
 #include <stddef.h>
 #include <stdarg.h>
 #include <math.h>
