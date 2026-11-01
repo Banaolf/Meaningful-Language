@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.2.2"
+#define VERSION "BETA.1.4.3.0"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -1371,7 +1371,10 @@ Value evaluate(ASTNode* node) {
 
     // 6. Function Calls
     if (node->type == NODE_FUNCTION_CALL) {
-        Symbol* callable = getCallable(node->value);
+        Symbol* callable = NULL;
+        Symbol* var = findSymbol(node->value);
+        if (var && var->value.type == VAL_FUNCTION) callable = var->value.as.func;
+        else callable = getCallable(node->value);
         if (!callable) {
             return throwException(IdentifierNotFoundException, "IdentifierNotFoundException: Function '%s' not defined.\n", node->value);
         }
