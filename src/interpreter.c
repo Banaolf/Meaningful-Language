@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.2.1"
+#define VERSION "BETA.1.4.2.2"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -770,14 +770,8 @@ static Value callSymbolImpl(Symbol* callable, int argCount, Value* argValues) {
     if (body && body->children) {
         for (int i = 0; i < body->childCount; i++) {
             ASTNode* stmt = body->children[i];
-            if (stmt->type == NODE_RETURN) {
-                Value inner = evaluate(stmt->right);
-                result = make(VAL_RETURN, inner);
-                result.returnType = inner.type;
-                break;
-            }
             Value stmtVal = evaluate(stmt);
-            if (stmtVal.type == VAL_ERR) { result = stmtVal; break; }
+            if (stmtVal.type == VAL_ERR || stmtVal.type == VAL_RETURN) { result = stmtVal; break; }
         }
     }
 
@@ -1806,6 +1800,16 @@ Value evaluate(ASTNode* node) {
         }
 
         return make(VAL_VOID);
+    }
+
+    // 11.1 Return
+    if (node->type == NODE_RETURN) {
+        Value inner = evaluate(node->right);
+        if (inner.type == VAL_ERR) return inner;
+        Value ret = inner;
+        ret.returnType = inner.type;
+        ret.type = VAL_RETURN;
+        return ret;
     }
 
     // 12. Break
