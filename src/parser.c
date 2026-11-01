@@ -12,7 +12,7 @@
 static int currentIndex = 0;
 static int scopeLevel = 0;
 static TokenStream* globalStream;
-static int checkMode = 0;
+static int functionDepth = 0;
 
 static const char* tokenTypeToString(TokenType type){
     switch (type) {
@@ -719,7 +719,6 @@ static ASTNode* parseFunctionDefinition(const char* name) {
     advance();
     ASTNode* funcNode = createNode(NODE_FUNCTION_DEF, name);
 
-    // 1. Parse Arguments: (arg1, arg2)
     if (!is_multiple(TOKEN_PARENTHESIS, 0, ")", NULL)) {
         while (true) {
             if (hasError) {
@@ -784,12 +783,13 @@ static ASTNode* parseFunctionDefinition(const char* name) {
         return NULL;
     }
 
-    // 2. Parse Body: statements until 'end'
     ASTNode* body = createNode(NODE_PROGRAM, "BODY");
     addChild(funcNode, body);
 
+    functionDepth++;
     while (!is(TOKEN_EOF, 0)) {
         if (hasError) {
+            functionDepth--;
             freeAST(funcNode);
             return NULL;
         }
@@ -808,6 +808,7 @@ static ASTNode* parseFunctionDefinition(const char* name) {
             advance(); // unstick the parser
         }
     }
+    functionDepth--;
 
     return funcNode;
 }
@@ -829,6 +830,15 @@ ASTNode* parseStatement() {
     // Handle function definitions with 'set'
     if (is_multiple(TOKEN_KEYWORD, 0, "set", NULL)) {
         if (is(TOKEN_IDENTIFIER, 1) && is(TOKEN_PARENTHESIS, 2)) {
+            if (functionDepth > 0) {
+                Token nameToken = peek(1);
+                error_t err = make_error(ERRTY_SyntaxError,
+                    "Cannot declare a function inside another function",
+                    nameToken.ln, nameToken.character);
+                set_err(&err);
+                free(err.message); // set_err keeps its own copy
+                return NULL;
+            }
             advance(); // eat set
             Token nameToken = peek(0);
             advance(); // eat name
@@ -1278,6 +1288,7 @@ ASTNode* parseFile(const TokenStream Tokens) {
     *globalStream = Tokens;
 
     currentIndex = 0;
+    functionDepth = 0;
     ASTNode* root = createNode(NODE_PROGRAM, "ROOT");
 
     while (!is(TOKEN_EOF, 0)) {

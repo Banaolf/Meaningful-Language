@@ -552,6 +552,7 @@ Value currentSelf;
 void defineFunction(char* name, ASTNode* node) {
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
+    sym->value = make(VAL_VOID);
     sym->funcNode = node;
     sym->nativeFunc = NULL;
     HASH_ADD_STR(currentScope->symbols, name, sym);
@@ -561,6 +562,7 @@ void defineFunction(char* name, ASTNode* node) {
 void defineNative(const char* name, NativeFn func) {
     Symbol* sym = malloc(sizeof(Symbol));
     sym->name = strdup(name);
+    sym->value = make(VAL_VOID);
     sym->funcNode = NULL;
     sym->nativeFunc = func;
     HASH_ADD_STR(currentScope->symbols, name, sym);
