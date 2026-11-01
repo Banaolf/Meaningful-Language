@@ -13,6 +13,7 @@ static int currentIndex = 0;
 static int scopeLevel = 0;
 static TokenStream* globalStream;
 static int functionDepth = 0;
+static int loopDepth = 0; // how many loop bodies we're currently inside
 
 static const char* tokenTypeToString(TokenType type){
     switch (type) {
@@ -70,6 +71,7 @@ const char* keywords[] = {
     "unset",
     "do",
     "createfile",
+    "continue",
     NULL
 };
 
@@ -156,6 +158,12 @@ static void throwMultiple(const int expectedCount, ...){
     error_t err = make_error(ERRTY_SyntaxError, msg, errorToken.ln, errorToken.character);
     set_err(&err);
     halt();
+}
+
+static void syntaxError(const char* msg, const Token t) {
+    error_t err = make_error(ERRTY_SyntaxError, msg, t.ln, t.character);
+    set_err(&err);
+    free(err.message); // set_err keeps its own copy
 }
 
 static void advance() {
@@ -787,6 +795,8 @@ static ASTNode* parseFunctionDefinition(const char* name) {
     addChild(funcNode, body);
 
     functionDepth++;
+    int savedLoopDepth = loopDepth;
+    loopDepth = 0;
     while (!is(TOKEN_EOF, 0)) {
         if (hasError) {
             functionDepth--;
@@ -809,6 +819,7 @@ static ASTNode* parseFunctionDefinition(const char* name) {
         }
     }
     functionDepth--;
+    loopDepth = savedLoopDepth;
 
     return funcNode;
 }
@@ -822,6 +833,26 @@ static ASTNode* copyAST(ASTNode* node) {
     new_node->right = copyAST(node->right);
     // Note: children array not copied as it's not used for assignment targets (VARIABLE/INDEX_ACCESS)
     return new_node;
+}
+
+// Parses statements up to 'end' into body, counting as "inside a loop".
+static bool parseLoopBody(ASTNode* body) {
+    loopDepth++;
+    while (!is(TOKEN_EOF, 0)) {
+        if (hasError) { loopDepth--; return false; }
+        if (is_multiple(TOKEN_KEYWORD, 0, "end", NULL)) {
+            advance(); // Eat 'end'
+            break;
+        }
+        ASTNode* stmt = parseStatement();
+        if (stmt) {
+            addChild(body, stmt);
+        } else if (!hasError) {
+            advance(); // unstick the parser
+        }
+    }
+    loopDepth--;
+    return true;
 }
 
 ASTNode* parseStatement() {
@@ -898,8 +929,21 @@ ASTNode* parseStatement() {
     }
 
     if (is_multiple(TOKEN_KEYWORD, 0, "break", NULL)) {
+        if (loopDepth == 0) {
+            syntaxError("'break' used outside of a loop", peek(0));
+            return NULL;
+        }
         advance(); // Eat 'break'
         return createNode(NODE_BREAK, "break");
+    }
+
+    if (is_multiple(TOKEN_KEYWORD, 0, "continue", NULL)) {
+        if (loopDepth == 0) {
+            syntaxError("'continue' used outside of a loop", peek(0));
+            return NULL;
+        }
+        advance(); // Eat 'continue'
+        return createNode(NODE_CONTINUE, "continue");
     }
 
     if (is_multiple(TOKEN_KEYWORD, 0, "print", NULL)) {
@@ -971,21 +1015,9 @@ ASTNode* parseStatement() {
         ASTNode* body = createNode(NODE_PROGRAM, "BODY");
         addChild(node, body);
         if (is(TOKEN_SEMICOLON, 0)) {advance();}
-        while (!is(TOKEN_EOF, 0)) {
-            if (hasError) {
-                freeAST(node);
-                return NULL;
-            }
-            if (is_multiple(TOKEN_KEYWORD, 0, "end", NULL)) {
-                advance();
-                break;
-            }
-            ASTNode* stmt = parseStatement();
-            if (stmt) {
-                addChild(body, stmt);
-            } else if (!(hasError)) {
-                advance();
-            }
+        if (!parseLoopBody(body)) {
+            freeAST(node);
+            return NULL;
         }
         return node;
     }
@@ -1002,21 +1034,9 @@ ASTNode* parseStatement() {
         ASTNode* body = createNode(NODE_PROGRAM, "BODY");
         addChild(node, body);
         if (is(TOKEN_SEMICOLON, 0)) {advance();}
-        while (!is(TOKEN_EOF, 0)) {
-            if (hasError) {
-                freeAST(node);
-                return NULL;
-            }
-            if (is_multiple(TOKEN_KEYWORD, 0, "end", NULL)) {
-                advance(); // Eat 'end'
-                break;
-            }
-            ASTNode* stmt = parseStatement();
-            if (stmt) {
-                addChild(body, stmt);
-            } else if (!(hasError)) {
-                advance(); // unstick the parser
-            }
+        if (!parseLoopBody(body)) {
+            freeAST(node);
+            return NULL;
         }
         return node;
     }
@@ -1059,7 +1079,7 @@ ASTNode* parseStatement() {
 
     if (is_multiple(TOKEN_KEYWORD, 0, "else", NULL)) {
         advance(); // Eat else
-        if (!is_multiple(TOKEN_KEYWORD, 0, "end", "print", "set", "while", "repeat", "if", "return", "break", "Import", "readfile", "overwrite", "put", NULL) && !is(TOKEN_EOF, 0) && !is(TOKEN_SEMICOLON, 0)) {
+        if (!is_multiple(TOKEN_KEYWORD, 0, "continue", "end", "print", "set", "while", "repeat", "if", "return", "break", "Import", "readfile", "overwrite", "put", NULL) && !is(TOKEN_EOF, 0) && !is(TOKEN_SEMICOLON, 0)) {
             ASTNode* cond = parseExpression();
             if (!cond || hasError) {
                 freeAST(cond);
@@ -1126,21 +1146,9 @@ ASTNode* parseStatement() {
         addChild(node, body);
 
         if (is(TOKEN_SEMICOLON, 0)) {advance();}
-        while (!is(TOKEN_EOF, 0)) {
-            if(hasError) {
-                freeAST(node);
-                return NULL;
-            }
-            if (is_multiple(TOKEN_KEYWORD, 0, "end", NULL)) {
-                advance(); // Eat 'end'
-                break;
-            }
-            ASTNode* stmt = parseStatement();
-            if (stmt) {
-                addChild(body, stmt);
-            } else if (!(hasError)) {
-                advance(); // unstick the parser
-            }
+        if (!parseLoopBody(body)) {
+            freeAST(node);
+            return NULL;
         }
         return node;
     }
@@ -1289,6 +1297,7 @@ ASTNode* parseFile(const TokenStream Tokens) {
 
     currentIndex = 0;
     functionDepth = 0;
+    loopDepth = 0;
     ASTNode* root = createNode(NODE_PROGRAM, "ROOT");
 
     while (!is(TOKEN_EOF, 0)) {

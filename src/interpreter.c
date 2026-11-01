@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.3.0"
+#define VERSION "BETA.1.4.4.0"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -76,7 +76,8 @@ typedef enum {
     VAL_RETURN,
     VAL_BREAK,
     VAL_NON,
-    VAL_FUNCTION
+    VAL_FUNCTION,
+    VAL_CONTINUE
 } ValueType;
 
 typedef enum {
@@ -1642,10 +1643,10 @@ Value evaluate(ASTNode* node) {
         if (cond.type == VAL_ERR) return cond;
         if (!is_falsy(cond)) {
             Value res = evalScoped(node->children[1]);
-            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK || res.type == VAL_CONTINUE) return res;
         } else if (node->childCount == 3) {
             Value res = evaluate(node->children[2]); // else chain scopes its own body
-            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+            if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK || res.type == VAL_CONTINUE) return res;
         }
         return make(VAL_VOID);
     }
@@ -1657,16 +1658,16 @@ Value evaluate(ASTNode* node) {
             if (cond.type == VAL_ERR) return cond;
             if (!is_falsy(cond)) {
                 Value res = evalScoped(node->children[1]); // body
-                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK || res.type == VAL_CONTINUE) return res;
             } else if (node->childCount == 3) {
                 Value res = evaluate(node->children[2]); // chain
-                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+                if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK || res.type == VAL_CONTINUE) return res;
             }
             return make(VAL_VOID);
         }
         // plain else
         Value res = evalScoped(node->children[0]); // body is children[0]
-        if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK) return res;
+        if (res.type == VAL_ERR || res.type == VAL_RETURN || res.type == VAL_BREAK || res.type == VAL_CONTINUE) return res;
         return make(VAL_VOID);
     }
 
@@ -1822,6 +1823,11 @@ Value evaluate(ASTNode* node) {
         return make(VAL_BREAK);
     }
 
+    // 12.1 Continue
+    if (node->type == NODE_CONTINUE) {
+        return make(VAL_CONTINUE);
+    }
+
     // 13. Readfile (builtin I/O)
     if (node->type == NODE_READFILE) {
         Value valPath = evaluate(node->children[0]);
@@ -1882,7 +1888,7 @@ Value evaluate(ASTNode* node) {
         // Restore previous file context (supports nesting)
         currentFile = previousFile;
 
-        if (blockResult.type == VAL_ERR) return blockResult;
+        if (blockResult.type == VAL_ERR || blockResult.type == VAL_RETURN || blockResult.type == VAL_BREAK || blockResult.type == VAL_CONTINUE) return blockResult;
         return make(VAL_VOID);
     }
 
@@ -2052,13 +2058,11 @@ Value evaluate(ASTNode* node) {
 
     // 17. Program / Block Execution
     if (node->type == NODE_PROGRAM) {
-        Value lastResult = make(VAL_VOID);
+        auto lastResult = make(VAL_VOID);
         if (node->children) {
             for (int i = 0; i < node->childCount; i++) {
                 lastResult = evaluate(node->children[i]);
-                if (lastResult.type == VAL_ERR) return lastResult;
-                if (lastResult.type == VAL_RETURN) return lastResult;
-                if (lastResult.type == VAL_BREAK) return lastResult;
+                if (lastResult.type == VAL_ERR || lastResult.type == VAL_RETURN || lastResult.type == VAL_BREAK || lastResult.type == VAL_CONTINUE) return lastResult;
             }
         }
         return lastResult;

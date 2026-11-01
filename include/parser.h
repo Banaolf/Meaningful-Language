@@ -44,7 +44,8 @@ typedef enum {
     NODE_CREATEFILE,
     NODE_TERNARY,
     NODE_COLON,
-    NODE_BINARY
+    NODE_BINARY,
+    NODE_CONTINUE
 } NodeType;
 
 typedef struct ASTNode {
