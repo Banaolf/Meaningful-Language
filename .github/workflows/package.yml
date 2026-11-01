@@ -2,27 +2,27 @@ name: Test Compiling Meaningful
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
 jobs:
   compile:
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
     steps:
       - name: Download code
         uses: actions/checkout@v4
 
-      - name: Add GCC to PATH
-        run: echo "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        shell: pwsh
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build object files
-        run: |
-          gcc -c lexer.c -o lexer.o
-          gcc -c parser.c -o parser.o
+      - name: Build
+        run: cmake --build build --parallel
 
-      - name: Build static libraries
-        run: |
-          ar rcs lexer.a lexer.o
-          ar rcs parser.a parser.o
+      - name: Smoke test
+        run: ./build/bin/meaningful --version
 
-      - name: Build interpreter
-        run: |
-          gcc interpreter.c lexer.a parser.a -o meaningful.exe -static
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: meaningful-linux
+          path: build/bin/meaningful
