@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.4.0"
+#define VERSION "BETA.1.4.4.1"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -728,11 +728,22 @@ static Value callSymbolImpl(Symbol* callable, int argCount, Value* argValues) {
     }
 
     ASTNode* funcDef = callable->funcNode;
-    int paramCount = funcDef->childCount - 1;
+        int paramCount = funcDef->childCount - 1;
 
-    if (paramCount > argCount) {
+    // Only parameters without a default value are required.
+    int requiredCount = 0;
+    for (int i = 0; i < paramCount; i++) {
+        if (funcDef->children[i]->right == NULL) requiredCount++;
+    }
+
+    if (argCount < requiredCount) {
         return throwException(ArgumentException,
-            "ArgumentException: Function '%s' expected %d arguments but got %d.\n",
+            "ArgumentException: Function '%s' expected %s%d arguments but got %d.\n",
+            funcDef->value, requiredCount < paramCount ? "at least " : "", requiredCount, argCount);
+    }
+    if (argCount > paramCount) {
+        return throwException(ArgumentException,
+            "ArgumentException: Function '%s' takes at most %d arguments but got %d.\n",
             funcDef->value, paramCount, argCount);
     }
 
