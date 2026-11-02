@@ -61,7 +61,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "uthash.h"
-#define VERSION "BETA.1.4.4.2"
+#define VERSION "BETA.1.4.4.3"
 //Licenced under BMLL2.0, see LICENCE for further info
 // --- GC, Value, and Object System ---
 // Forward declarations for our types
@@ -1903,28 +1903,30 @@ Value evaluate(ASTNode* node) {
         return make(VAL_VOID);
     }
 
-	// 13.1 Createfile
-	if (node->type == NODE_CREATEFILE) {
-		Value path = evaluate(node->left);
-		if (path.type == VAL_ERR) return path;
-		if (!IS_OBJ_TYPE(path, OBJ_STRING)) return throwException(TypeException, "TypeException: createfile expects a string as first argument");
-		FILE* file = fopen(AS_CSTRING(path), "x");
-		if (!file) {printf("WARNING: File couldn't be created, trying to create/overwrite");file = fopen(AS_CSTRING(path), "w");}
-		else if(node->value) {
-			ObjFile* File = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
-			File->path = AS_CSTRING(path);
-			defineVariable(node->value, make(VAL_OBJECT, File));
-			fclose(file);
-		}
-		if (!file) return throwException(RuntimeException, "RuntimeException: File couldn't be created. No further info given.");
-		else if(node->value) {
-			ObjFile* File = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
-			File->path = AS_CSTRING(path);
-			defineVariable(node->value, make(VAL_OBJECT, File));
-			fclose(file);
-		}
-		return make(VAL_VOID);
-	}
+    // 13.1 Createfile
+    if (node->type == NODE_CREATEFILE) {
+        Value path = evaluate(node->left);
+        if (path.type == VAL_ERR) return path;
+        if (!IS_OBJ_TYPE(path, OBJ_STRING)) return throwException(TypeException, "TypeException: createfile expects a string as first argument\n");
+
+        FILE* fp = fopen(AS_CSTRING(path), "x");
+        if (!fp) {
+            fp = fopen(AS_CSTRING(path), "w");
+        }
+        if (!fp) return throwException(RuntimeException, "RuntimeException: File '%s' couldn't be created.\n", AS_CSTRING(path));
+        fclose(fp);
+
+        if (node->value) {
+            char* pathCopy = strdup(AS_CSTRING(path));
+            ObjFile* File = (ObjFile*)allocateObject(sizeof(ObjFile), OBJ_FILE);
+            File->file = NULL;
+            File->contents = NULL;
+            File->isOpen = false;
+            File->path = pathCopy; // malloc'd, so the GC can free it
+            defineVariable(node->value, make(VAL_OBJECT, (Object*)File));
+        }
+        return make(VAL_VOID);
+    }
 
     // 13.2 File interactions
     if (node->type == NODE_FILE_INTERACTION) {
@@ -2084,7 +2086,7 @@ Value evaluate(ASTNode* node) {
 
 // --- Native C Functions ---
 
-Value native_input(int argCount, Value* args) {
+static Value native_input(int argCount, Value* args) {
     (void)args;
     if (argCount != 0) return throwException(ArgumentException, "ArgumentException: input() takes 0 arguments.\n");
     char line[1024];
@@ -2095,13 +2097,13 @@ Value native_input(int argCount, Value* args) {
     return make(VAL_OBJECT, (Object*)allocateString("", 0));
 }
 
-Value native_clock(int argCount, Value* args) {
+static Value native_clock(int argCount, Value* args) {
     (void)args;
     if (argCount != 0) return throwException(ArgumentException, "ArgumentException: clock() takes 0 arguments.\n");
     return make(VAL_INT, (int)(clock() * 1000 / CLOCKS_PER_SEC));
 }
 
-Value native_length(int argc, Value* args) {
+static Value native_length(int argc, Value* args) {
     if (argc != 1) return throwException(ArgumentException, "ArgumentException: length() takes 1 argument.");
     Value val = args[0];
     if (IS_OBJ_TYPE(val, OBJ_STRING)) return make(VAL_INT, AS_STRING(val)->length);
@@ -2133,7 +2135,7 @@ Value native_length(int argc, Value* args) {
     return throwException(TypeException, "TypeException: Length needs a valid type.\n");
 }
 
-Value native_none(int argCount, Value* args) {
+static Value native_none(int argCount, Value* args) {
     if (argCount == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argCount; i++) {
         if (!is_falsy(args[i])) return make(VAL_INT, 0);
@@ -2141,7 +2143,7 @@ Value native_none(int argCount, Value* args) {
     return make(VAL_INT, 1);
 }
 
-Value native_all(int argc, Value* args) {
+static Value native_all(int argc, Value* args) {
     if (argc == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argc; i++) {
         if (is_falsy(args[i])) return make(VAL_INT, 0);
@@ -2149,7 +2151,7 @@ Value native_all(int argc, Value* args) {
     return make(VAL_INT, 1);
 }
 
-Value native_any(int argc, Value* args) {
+static Value native_any(int argc, Value* args) {
     if (argc == 0) {(void)args; return make(VAL_INT, 0);}
     for (int i = 0; i < argc; i++) {
         if (!is_falsy(args[i])) return make(VAL_INT, 1);
@@ -2157,13 +2159,13 @@ Value native_any(int argc, Value* args) {
     return make(VAL_INT, 0);
 }
 
-Value native_GCCOLL(int argc, Value* args) {
+static Value native_GCCOLL(int argc, Value* args) {
     printf("WARNING: Collecting garbage manually called.\n");
     collectGarbage();
     return make(VAL_VOID);
 }
 
-Value native_random(int argc, Value* args) {
+static Value native_random(int argc, Value* args) {
     int min = 0; int max = 255;
     if (argc == 1) {
         if (args[0].type != VAL_INT && args[0].type != VAL_FLOAT) return throwException(ArgumentException, "ArgumentException: random() expects either integers or floats.");
@@ -2179,7 +2181,7 @@ Value native_random(int argc, Value* args) {
     return make(VAL_INT, rand() % (max - min + 1) + min);
 }
 
-Value native_sleep(int argc, Value* args) {
+static Value native_sleep(int argc, Value* args) {
     if (argc != 1) return throwException(ArgumentException, "ArgumentException: sleep() requires 1 parameter");
     int seconds;
     if (args[0].type != VAL_INT) {
@@ -2190,7 +2192,7 @@ Value native_sleep(int argc, Value* args) {
     return make(VAL_VOID);
 }
 
-Value native_deletefile(int argc, Value* args) {
+static Value native_deletefile(int argc, Value* args) {
 	if (argc != 1) return throwException(ArgumentException, "ArgumentException: deletefile() only takes 1 argument.");
 	if (!IS_OBJ_TYPE(args[0], OBJ_STRING) && !IS_OBJ_TYPE(args[0], OBJ_FILE)) return throwException(TypeException, "TypeException: deletefile() only takes a string or file.");
 	char* path = IS_OBJ_TYPE(args[0], OBJ_FILE) ? AS_FILE(args[0])->path : AS_CSTRING(args[0]);
@@ -2209,7 +2211,8 @@ void initNatives() {
     defineNative("none", native_none);
     defineNative("_GCCOLLECT_", native_GCCOLL);
     defineNative("random", native_random);
-	defineNative("deleteFile", native_deletefile);
+	defineNative("sleep", native_sleep);
+    defineNative("deletefile", native_deletefile);
 }
 
 void initSymbolTable() {
