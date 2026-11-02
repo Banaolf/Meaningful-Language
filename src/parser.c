@@ -10,37 +10,36 @@
 //Licensed under BMLL2.0, see LICENSE for further info
 
 static int currentIndex = 0;
-static int scopeLevel = 0;
 static TokenStream* globalStream;
 static int functionDepth = 0;
 static int loopDepth = 0; // how many loop bodies we're currently inside
 
 static const char* tokenTypeToString(TokenType type){
     switch (type) {
-        case TOKEN_KEYWORD: return "TOKEN_KEYWORD";
-        case TOKEN_IDENTIFIER: return "TOKEN_IDENTIFIER";
-        case TOKEN_NUMBER: return "TOKEN_NUMBER";
-        case TOKEN_CURLY: return "TOKEN_CURLY";
-        case TOKEN_SQUARE: return "TOKEN_SQUARE";
-        case TOKEN_BOOLEAN: return "TOKEN_BOOLEAN";
-        case TOKEN_NON: return "TOKEN_NON";
-        case TOKEN_OPERATOR: return "TOKEN_OPERATOR";
-        case TOKEN_EQUALS: return "TOKEN_EQUALS";
-        case TOKEN_COMPARISON: return "TOKEN_COMPARISON";
-        case TOKEN_STRING: return "TOKEN_STRING";
-        case TOKEN_EOF: return "TOKEN_EOF";
-        case TOKEN_PARENTHESIS: return "TOKEN_PARENTHESIS";
-        case TOKEN_COMMA: return "TOKEN_COMMA";
-        case TOKEN_SEMICOLON: return "TOKEN_SEMICOLON";
-        case TOKEN_COLON: return "TOKEN_COLON";
-        case TOKEN_COMPOUND_ASSIGN: return "TOKEN_COMPOUND_ASSIGN";
-        case TOKEN_DOT: return "TOKEN_DOT";
-        case TOKEN_FLOAT: return "TOKEN_FLOAT";
-        case TOKEN_UNARY: return "TOKEN_UNARY";
-        case TOKEN_AT: return "TOKEN_AT";
-        case TOKEN_DLRSIGN: return "TOKEN_DLRSIGN";
-        case TOKEN_CARET: return "TOKEN_CARET";
-        case TOKEN_HASHTAG: return "TOKEN_HASHTAG";
+        case TOKEN_KEYWORD: return "keyword";
+        case TOKEN_IDENTIFIER: return "identifier";
+        case TOKEN_NUMBER: return "number";
+        case TOKEN_CURLY: return "curly bracket";
+        case TOKEN_SQUARE: return "square bracket";
+        case TOKEN_BOOLEAN: return "boolean";
+        case TOKEN_NON: return "non";
+        case TOKEN_OPERATOR: return "operator";
+        case TOKEN_EQUALS: return "equals";
+        case TOKEN_COMPARISON: return "comparison";
+        case TOKEN_STRING: return "string";
+        case TOKEN_EOF: return "end of file";
+        case TOKEN_PARENTHESIS: return "parenthesis";
+        case TOKEN_COMMA: return "comma";
+        case TOKEN_SEMICOLON: return "semicolon";
+        case TOKEN_COLON: return "colon";
+        case TOKEN_COMPOUND_ASSIGN: return "compound assignment";
+        case TOKEN_DOT: return "dot";
+        case TOKEN_FLOAT: return "float";
+        case TOKEN_UNARY: return "unary";
+        case TOKEN_AT: return "at";
+        case TOKEN_DLRSIGN: return "dollar sign";
+        case TOKEN_CARET: return "caret";
+        case TOKEN_HASHTAG: return "hashtag";
         case ERR: return "ERR";
         default: return "UNKNOWN";
     }

@@ -44,23 +44,20 @@ void finalCleanup(TokenStream* stream) {
     free(stream);
 }
 
-static int line = 0;
-static int character = 0;
+// Position of the token currently being lexed (1-based line and column of its first character).
+static int line = 1;
+static int character = 1;
+
+static int curLine = 1;
+static const char* lineStart = NULL;
+
+static void note_newline(const char* p) {
+    curLine++;
+    lineStart = p + 1;
+}
 
 // Add a token to the list and grow if full
 static void addToken(TokenStream* stream, TokenType type, const char* value) {
-    if (value[0] == '0' && value[1] == 'b') {
-        int count = 0;
-        for (int i = 2; i < strlen(value); i++) {
-            const char chara = value[i];
-            if (chara != '1' && chara != '0') {
-                error_t err = make_error(ERRTY_SyntaxError, "Malformed Binary", line, character);
-                set_err(&err);
-            }
-            count++;
-        }
-        stream->tokens[stream->size].bitlength = count;
-    }
     if (stream->size == stream->capacity) {
         stream->capacity *= 2;
         void* realloc_result = realloc(stream->tokens, sizeof(Token) * stream->capacity);
@@ -76,20 +73,8 @@ static void addToken(TokenStream* stream, TokenType type, const char* value) {
     stream->tokens[stream->size].value = strdup(value); // Copy string to safe memory
     stream->tokens[stream->size].ln = line;
     stream->tokens[stream->size].character = character;
+    stream->tokens[stream->size].bitlength = 0; // only binary literals set this (see the 0b branch)
     stream->size++;
-}
-
-static int is_digit(const char *s) {
-    if (s == NULL || *s == '\0') {
-        return 73;
-    }
-    while (*s != '\0') {
-        if (!isdigit((unsigned char)*s)) {
-            return 93;
-        }
-        s++;
-    }
-    return 0;
 }
 
 // --- 3. THE LEXER ENGINE ---
@@ -98,24 +83,43 @@ TokenStream* lex(const char* source) {
     TokenStream* stream = createTokenStream();
     const char* c = source;
 
+    // Fresh position state for every lex() call (the REPL and imports call it repeatedly).
+    curLine = 1;
+    lineStart = source;
+    line = 1;
+    character = 1;
+
     while (*c != '\0') {
-        character = character + 1;
-        if (isspace(*c)) {
-            if (*c == '\n'){line++; character = 0;}
+        if (*c == '\n') {
+            note_newline(c);
+            c++;
+            continue;
+        }
+        if (isspace((unsigned char)*c)) {
             c++;
             continue;
         }
 
+        // This is where the next token starts: 1-based line and column.
+        line = curLine;
+        character = (int)(c - lineStart) + 1;
+
         if (*c == ':') {
             if (*(c+1) == ':') {
-                while (*c != '\0' && *c != '\n'){if(*c == '\n')line++;character++;c++;} // COMMENTS!!
+                // LINE COMMENT '::' - stop before the '\n'; the main loop counts it.
+                while (*c != '\0' && *c != '\n') c++;
                 continue;
             } else if (*(c+1) == ';'){
-                while (*c != '\0' && !(*c == ';' && *(c+1) == ':')){if(*c == '\n')line++;character++;c++;} // BLOCK COMMENTS!!
-                if(*c == '\0'){
-                    // Non-fatal warning or treat as syntax error depending on preference; keeping message structure clean
-                    fprintf(stderr, "[LEXER] WARN: block comment reaches end of file!\n");
-                    c+=2;
+                // BLOCK COMMENT ':;' ... ';:'
+                c += 2; // skip the opening ':;'
+                while (*c != '\0' && !(*c == ';' && *(c+1) == ':')) {
+                    if (*c == '\n') note_newline(c);
+                    c++; // one character at a time, so nothing is skipped
+                }
+                if (*c == '\0') {
+                    fprintf(stderr, "CommentWarning: block comment reaches end of file!\n");
+                } else {
+                    c += 2; // skip the closing ';:'
                 }
                 continue;
             } else {
@@ -170,19 +174,30 @@ TokenStream* lex(const char* source) {
         if (*c == '0' && *(c+1) == 'b') {
             char buffer[256] = {0};
             int i = 0;
-            c+=2;
-            while (*c == '0' || *c == '1') {
-                character++;
+            c += 2; // skip the '0b' prefix
+            while ((*c == '0' || *c == '1') && i < 255) {
                 buffer[i++] = *c++;
             }
-            addToken(stream, TOKEN_BINARY, buffer);
+            // Needs at least one bit, and must not run straight into other characters
+            // (e.g. 0b102, 0bxyz, or more bits than fit in the buffer).
+            if (i == 0 || isalnum((unsigned char)*c) || *c == '_') {
+                while (isalnum((unsigned char)*c) || *c == '_') c++; // skip the rest of the bad literal
+                error_t err = make_error(ERRTY_SyntaxError, "Malformed binary literal", line, character);
+                set_err(&err);
+                free(err.message); // set_err keeps its own copy
+                continue;
+            }
+            addToken(stream, TOKEN_BINARY, buffer); // value is the bits only, without '0b'
+            stream->tokens[stream->size - 1].bitlength = i; // number of bits
             continue;
         }
 
-        if (isalnum(*c) || *c == '_' ) {
+        // Identifiers and keywords must START with a letter or '_' (digits are handled below),
+        // otherwise numbers get swallowed here and floats like 3.14 never reach the number branch.
+        if (isalpha((unsigned char)*c) || *c == '_' ) {
             char buffer[256] = {0};
             int i = 0;
-            while (isalnum(*c) || *c == '_' ) {character++; buffer[i++] = *c++;}
+            while (isalnum(*c) || *c == '_' ) { buffer[i++] = *c++; }
 
             if (get_keyword_type(buffer)) {
                 addToken(stream, TOKEN_KEYWORD, buffer);
@@ -190,8 +205,6 @@ TokenStream* lex(const char* source) {
                 addToken(stream, TOKEN_BOOLEAN, buffer);
             } else if (strcmp(buffer, "non") == 0){
                 addToken(stream, TOKEN_NON, "non");
-            } else if (is_digit(buffer) == 0) {
-                addToken(stream, TOKEN_NUMBER, buffer);
             } else if (strcmp(buffer, "not") == 0) {
                 addToken(stream, TOKEN_UNARY, "not");
             } else {
@@ -205,7 +218,6 @@ TokenStream* lex(const char* source) {
             int i = 0;
             int pointCount = 0;
             while (isdigit(*c) || *c == '.') {
-                character++;
                 buffer[i++] = *c++;
                 if (*c == '.'){
                     pointCount++;
@@ -299,9 +311,9 @@ TokenStream* lex(const char* source) {
             continue;
         }
 
-        if (strchr("%", *c)){
+        if (*c == '%') {
             addToken(stream, TOKEN_OPERATOR, "%");
-            c+=2;
+            c ++;
             continue;
         }
 
@@ -334,9 +346,9 @@ TokenStream* lex(const char* source) {
                         }
                     }
                 } else {
+                    if (*c == '\n') note_newline(c); // raw newline inside the string
                     buffer[i++] = *c;
                 }
-                character++;
                 c++;
             }
             if (*c == '"') c++; // Skip closing quote
@@ -349,7 +361,7 @@ TokenStream* lex(const char* source) {
             char buffer[256] = {0};
             int i = 0;
             while (*c != '\'' && *c != '\0') {
-                character++;
+                if (*c == '\n') note_newline(c); // raw newline inside the string
                 buffer[i++] = *c++;
             }
             if (*c == '\'') c++; // Skip closing quote
@@ -361,8 +373,12 @@ TokenStream* lex(const char* source) {
         snprintf(msg, sizeof(msg), "Unknown character '%c'", *c);
         error_t err = make_error(ERRTY_SyntaxError, msg, line, character);
         set_err(&err);
+        c++; // skip the bad character, otherwise this loop never ends
     }
 
+    // The EOF token sits at the very end of the source.
+    line = curLine;
+    character = (int)(c - lineStart) + 1;
     addToken(stream, TOKEN_EOF, "EOF");
     return stream;
 }
